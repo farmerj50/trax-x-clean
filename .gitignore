@@ -1,0 +1,53 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+venv/
+env/
+backend/venv/
+__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+backend/.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build folders
+build/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Databases
+*.sqlite3
+*.db
+
+# Cache / temp
+.cache/
+.pytest_cache/
+*.tmp
+
+# ML / generated artifacts
+*.h5
+*.keras
+*.pkl
+*.joblib
+
+# Local generated data
+lookup_table.json
+lookup_table.pkl
+backend/log_dir/
