@@ -1,0 +1,122 @@
+.scanner-news-card {
+  min-width: 0;
+}
+
+.scanner-news-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: 1200px;
+  overflow-y: auto;
+}
+
+.scanner-news-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.scanner-news-body::-webkit-scrollbar-track {
+  background: rgba(8, 14, 25, 0.6);
+  border-radius: 999px;
+}
+
+.scanner-news-body::-webkit-scrollbar-thumb {
+  background: rgba(120, 145, 180, 0.2);
+  border-radius: 999px;
+}
+
+.scanner-news-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 145, 180, 0.32);
+}
+
+.scanner-news-empty {
+  min-height: 320px;
+}
+
+.news-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(120, 145, 180, 0.12);
+}
+
+.news-section:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.news-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.news-section-header h5 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: 18px;
+}
+
+.news-section-header span {
+  color: rgba(173, 196, 233, 0.72);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.news-article {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(120, 145, 180, 0.14);
+  background: linear-gradient(180deg, rgba(10, 21, 39, 0.94) 0%, rgba(7, 15, 28, 0.98) 100%);
+}
+
+.news-article-title {
+  color: #eff5ff;
+  text-decoration: none;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.news-article-title:hover {
+  color: #8cb7ff;
+}
+
+.news-article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: rgba(173, 196, 233, 0.72);
+  font-size: 12px;
+}
+
+.news-article-description,
+.news-article-sentiment,
+.news-section-empty {
+  margin: 0;
+  color: rgba(219, 231, 255, 0.78);
+  line-height: 1.55;
+  font-size: 14px;
+}
+
+.news-article-sentiment strong {
+  color: #f8fbff;
+}
+
+.news-article-image {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 145, 180, 0.12);
+  object-fit: cover;
+}
+
+@media (max-width: 1100px) {
+  .scanner-news-body {
+    max-height: none;
+  }
+}

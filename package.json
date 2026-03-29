@@ -1,0 +1,55 @@
+{
+  "name": "trax-x",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@syncfusion/ej2-react-charts": "^28.1.41",
+    "@syncfusion/ej2-react-dropdowns": "^28.1.41",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "ajv": "^6.12.6",
+    "ajv-keywords": "^3.5.2",
+    "axios": "^1.7.9",
+    "bootstrap": "^5.3.3",
+    "chart.js": "^4.4.7",
+    "d3": "^7.9.0",
+    "lightweight-charts": "^4.2.2",
+    "lodash": "^4.17.21",
+    "plotly.js": "^2.35.3",
+    "react": "^19.0.0",
+    "react-bootstrap": "^2.10.8",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^19.0.0",
+    "react-plotly.js": "^2.6.0",
+    "react-router-dom": "^7.1.3",
+    "react-scripts": "^5.0.1",
+    "react-stockcharts": "^0.7.8",
+    "socket.io-client": "^4.8.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

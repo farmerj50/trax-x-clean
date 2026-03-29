@@ -1,0 +1,10 @@
+flask
+flask-cors
+flask-socketio
+websocket-client
+python-dotenv
+yfinance
+pandas
+numpy
+mplfinance
+scikit-learn

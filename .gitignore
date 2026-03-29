@@ -12,6 +12,7 @@ __pycache__/
 backend/**/__pycache__/
 *.pyc
 *.pyo
+pyvenv.cfg
 
 # Environment variables
 .env
@@ -21,12 +22,16 @@ backend/.env
 .DS_Store
 Thumbs.db
 
+# Windows shortcuts
+*.lnk
+
 # Logs
 *.log
 
 # Build folders
 build/
 dist/
+coverage/
 
 # IDE
 .vscode/
@@ -51,3 +56,24 @@ dist/
 lookup_table.json
 lookup_table.pkl
 backend/log_dir/
+
+# Secrets / keys
+*.pem
+*.key
+
+# Generated charts/images
+backend/*_chart.png
+backend/*.png
+# Backend data (VERY IMPORTANT)
+backend/data/
+backend/utils/output_master_parts/
+
+# CSV data
+*.csv
+
+# Text files (possible secrets)
+backend/data/*.txt
+
+# Batch files
+*.bat
+backend/aggregates_day/
