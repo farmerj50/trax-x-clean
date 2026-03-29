@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 import { SOCKET_BASE, apiFetch } from "../apiClient";

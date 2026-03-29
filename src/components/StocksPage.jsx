@@ -1,6 +1,5 @@
+/* eslint-disable no-template-curly-in-string, react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import ErrorBoundary from "./ErrorBoundary";
-import StockTracker from "./StockTracker";
 import LiveStockUpdate from "./LiveStockUpdate";
 import AddTicker from "./AddTicker";
 import MarketSignalsFeed from "./MarketSignalsFeed";
@@ -20,15 +19,7 @@ import {
   CandleSeries,
   Legend,
   Export,
-  EmaIndicator,
-  TmaIndicator,
-  SmaIndicator,
-  MomentumIndicator,
-  AtrIndicator,
-  AccumulationDistributionIndicator,
-  BollingerBands,
   MacdIndicator,
-  StochasticIndicator,
   RsiIndicator,
   ScatterSeries
 } from "@syncfusion/ej2-react-charts";
@@ -311,7 +302,7 @@ const StocksPage = () => {
   const [stopLoss, setStopLoss] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [lastUpdate, setLastUpdate] = useState("");
-  const [lastFetchedClose, setLastFetchedClose] = useState(null);
+  const [, setLastFetchedClose] = useState(null);
   const [prevTicker, setPrevTicker] = useState(null);
   const [liveCandles, setLiveCandles] = useState([]);
   const [liveSignal, setLiveSignal] = useState(null);

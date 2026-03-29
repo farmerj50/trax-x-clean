@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../apiClient";
 import "./ShortSalesPage.css";
