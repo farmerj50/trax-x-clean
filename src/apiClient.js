@@ -1,5 +1,8 @@
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
-const SOCKET_BASE = process.env.REACT_APP_SOCKET_BASE || API_BASE;
+const defaultApiBase = typeof window !== "undefined" ? window.location.origin : "http://localhost:5000";
+const defaultSocketBase = typeof window !== "undefined" ? (window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host : "ws://localhost:5000";
+
+const API_BASE = process.env.REACT_APP_API_BASE || defaultApiBase;
+const SOCKET_BASE = process.env.REACT_APP_SOCKET_BASE || defaultSocketBase;
 
 const buildApiUrl = (path) => `${API_BASE}${path}`;
 
