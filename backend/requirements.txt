@@ -8,3 +8,10 @@ pandas
 numpy
 mplfinance
 scikit-learn
+requests
+joblib
+cachetools
+vaderSentiment
+matplotlib
+tensorflow
+polygon-api-client

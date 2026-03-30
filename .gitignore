@@ -37,6 +37,10 @@ coverage/
 .vscode/
 .idea/
 
+# Python virtual environments
+.venv/
+backend/.venv/
+
 # Databases
 *.sqlite3
 *.db
