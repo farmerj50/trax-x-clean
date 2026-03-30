@@ -15,3 +15,4 @@ vaderSentiment
 matplotlib
 tensorflow
 polygon-api-client
+ta

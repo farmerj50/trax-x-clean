@@ -2,6 +2,7 @@
   "name": "trax-x",
   "version": "0.1.0",
   "private": true,
+  "proxy": "http://localhost:5000",
   "dependencies": {
     "@syncfusion/ej2-react-charts": "^28.1.41",
     "@syncfusion/ej2-react-dropdowns": "^28.1.41",

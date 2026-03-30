@@ -56,8 +56,7 @@ const App = () => {
         max_rsi: criteria.maxRSI,
         volume_surge: criteria.volumeSurge,
       });
-      const response = await apiFetch(`/api/scan-stocks?${queryParams}`);
-      const data = await response.json();
+      const data = await apiFetch(`/api/scan-stocks?${queryParams}`);
       console.log("scan-stocks response", data);
       if (data?.candidates?.length) {
         setStocks(data.candidates);

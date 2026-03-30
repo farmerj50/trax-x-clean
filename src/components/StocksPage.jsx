@@ -325,12 +325,8 @@ const StocksPage = () => {
     console.log(`Ã°Å¸â€œÂ¡ Fetching stock data for: ${tickerSymbol}`);
 
     try {
-      const response = await apiFetch(`/api/stock-data?ticker=${tickerSymbol}`);
-
-      if (!response.ok) throw new Error("Failed to fetch stock data.");
-
-      const data = await response.json();
-      console.log("Ã¢Å“â€¦ API Response:", data);
+      const data = await apiFetch(`/api/stock-data?ticker=${tickerSymbol}`);
+      console.log("API Response:", data);
 
       if (data && data.dates && data.dates.length > 0) {
         const formattedData = data.dates.map((date, index) => ({
