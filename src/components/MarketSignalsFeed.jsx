@@ -45,7 +45,7 @@ const scoreGlow = (score) => {
   return "0 0 0 1px rgba(31,41,55,1)";
 };
 
-const MarketSignalsFeed = ({ selectedTicker }) => {
+const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
   const [signals, setSignals] = useState([]);
   const [onlySelectedTicker, setOnlySelectedTicker] = useState(false);
   const [lastLoadCount, setLastLoadCount] = useState(0);
@@ -380,79 +380,103 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
     return aiPicks;
   }, [aiPicks, aiAlertFilter]);
 
-  const fieldStyle = { display: "flex", flexDirection: "column", gap: "4px", fontSize: "11px", color: "#9ca3af" };
+  const isDark = theme === "dark";
+  const themeColors = {
+    pageBorder: isDark ? "#2d3748" : "#cfdced",
+    border: isDark ? "#1f2937" : "#c9d7eb",
+    strongBorder: isDark ? "#334155" : "#b7c9e0",
+    pageBackground: isDark ? "#0b1120" : "#f8fbff",
+    cardBackground: isDark
+      ? "linear-gradient(180deg, rgba(15,23,42,0.82), rgba(10,15,24,0.88))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(238,244,255,0.96))",
+    controlBackground: isDark
+      ? "linear-gradient(180deg, rgba(17,24,39,0.92), rgba(10,15,24,0.92))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(241,245,249,0.96))",
+    mutedPanel: isDark ? "rgba(15,23,42,0.9)" : "rgba(244,247,252,0.95)",
+    inputBackground: isDark ? "#0f172a" : "#ffffff",
+    buttonBackground: isDark ? "#111827" : "#f8fbff",
+    heading: isDark ? "#f8fafc" : "#102038",
+    text: isDark ? "#e5e7eb" : "#1f2937",
+    mutedText: isDark ? "#94a3b8" : "#64748b",
+    subtleText: isDark ? "#9ca3af" : "#64748b",
+    chipText: isDark ? "#cbd5e1" : "#334155",
+    actionBackground: isDark ? "#172554" : "#dbeafe",
+    actionText: isDark ? "#dbeafe" : "#0f172a",
+  };
+
+  const fieldStyle = { display: "flex", flexDirection: "column", gap: "4px", fontSize: "11px", color: themeColors.subtleText };
   const inputStyle = {
     minHeight: "36px",
     padding: "0 10px",
     borderRadius: "8px",
-    border: "1px solid #334155",
-    background: "#0f172a",
-    color: "#f8fafc",
+    border: `1px solid ${themeColors.strongBorder}`,
+    background: themeColors.inputBackground,
+    color: themeColors.heading,
   };
   const baseButtonStyle = {
     minHeight: "38px",
     padding: "0 14px",
     borderRadius: "999px",
-    border: "1px solid #334155",
-    background: "#111827",
-    color: "#e5e7eb",
+    border: `1px solid ${themeColors.strongBorder}`,
+    background: themeColors.buttonBackground,
+    color: themeColors.text,
     cursor: "pointer",
     fontWeight: 600,
     transition: "all 120ms ease",
   };
   const presetButtonStyle = (preset) => ({
     ...baseButtonStyle,
-    background: activePreset === preset ? "linear-gradient(135deg, #0ea5e9, #2563eb)" : "#111827",
-    borderColor: activePreset === preset ? "#38bdf8" : "#334155",
-    color: activePreset === preset ? "#eff6ff" : "#e5e7eb",
+    background: activePreset === preset ? "linear-gradient(135deg, #0ea5e9, #2563eb)" : themeColors.buttonBackground,
+    borderColor: activePreset === preset ? "#38bdf8" : themeColors.strongBorder,
+    color: activePreset === preset ? "#eff6ff" : themeColors.text,
     boxShadow: activePreset === preset ? "0 8px 20px rgba(37,99,235,0.2)" : "none",
   });
   const actionButtonStyle = (disabled) => ({
     ...baseButtonStyle,
-    background: disabled ? "#111827" : "#172554",
-    borderColor: disabled ? "#334155" : "#1d4ed8",
-    color: disabled ? "#94a3b8" : "#dbeafe",
+    background: disabled ? themeColors.buttonBackground : themeColors.actionBackground,
+    borderColor: disabled ? themeColors.strongBorder : "#1d4ed8",
+    color: disabled ? themeColors.mutedText : themeColors.actionText,
     cursor: disabled ? "default" : "pointer",
   });
   const mutedButtonStyle = {
     ...baseButtonStyle,
-    background: "#0f172a",
+    background: themeColors.inputBackground,
   };
-  const checkboxLabelStyle = { fontSize: "12px", color: "#cbd5e1", whiteSpace: "nowrap", paddingBottom: "8px" };
+  const checkboxLabelStyle = { fontSize: "12px", color: themeColors.chipText, whiteSpace: "nowrap", paddingBottom: "8px" };
   const controlGroupStyle = {
     display: "flex",
     gap: "10px",
     flexWrap: "wrap",
     alignItems: "flex-end",
     padding: "12px",
-    border: "1px solid #1f2937",
+    border: `1px solid ${themeColors.border}`,
     borderRadius: "10px",
-    background: "linear-gradient(180deg, rgba(17,24,39,0.92), rgba(10,15,24,0.92))",
+    background: themeColors.controlBackground,
   };
   const sectionCardStyle = {
     marginTop: "16px",
-    border: "1px solid #1f2937",
+    border: `1px solid ${themeColors.border}`,
     borderRadius: "12px",
     padding: "14px",
-    background: "linear-gradient(180deg, rgba(15,23,42,0.82), rgba(10,15,24,0.88))",
+    background: themeColors.cardBackground,
   };
   const statusChipStyle = {
     fontSize: "12px",
-    color: "#cbd5e1",
+    color: themeColors.chipText,
     padding: "6px 10px",
     borderRadius: "999px",
-    border: "1px solid #1f2937",
-    background: "rgba(15,23,42,0.9)",
+    border: `1px solid ${themeColors.border}`,
+    background: themeColors.mutedPanel,
   };
 
   return (
-    <div style={{ marginTop: "16px", border: "1px solid #2d3748", borderRadius: "12px", padding: "12px", background: "#0b1120" }}>
+    <div style={{ marginTop: "16px", border: `1px solid ${themeColors.pageBorder}`, borderRadius: "12px", padding: "12px", background: themeColors.pageBackground }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <div style={{ ...sectionCardStyle, marginTop: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginBottom: "12px" }}>
           <div>
-            <div style={{ fontSize: "26px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>AI Market Scanner</div>
-            <div style={{ fontSize: "13px", color: "#94a3b8", marginTop: "4px" }}>Professional trade intelligence across breakout, AI-ranked, and small-cap momentum setups.</div>
+            <div style={{ fontSize: "26px", fontWeight: 800, color: themeColors.heading, letterSpacing: "-0.02em" }}>AI Market Scanner</div>
+            <div style={{ fontSize: "13px", color: themeColors.mutedText, marginTop: "4px" }}>Professional trade intelligence across breakout, AI-ranked, and small-cap momentum setups.</div>
           </div>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <span style={statusChipStyle}>Mode: {mode}</span>

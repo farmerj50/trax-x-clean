@@ -291,7 +291,7 @@ const computeLiveSignals = (candles) => {
     tooLate: tradePlan.tooLate,
   };
 };
-const StocksPage = () => {
+const StocksPage = ({ theme = "dark" }) => {
   const [ticker, setTicker] = useState("");
   const [selectedTicker, setSelectedTicker] = useState("AAPL");
   const [chartData, setChartData] = useState([]);
@@ -586,38 +586,58 @@ const StocksPage = () => {
     }
   };
 
+  const isDark = theme === "dark";
+  const themeColors = {
+    border: isDark ? "#243041" : "#c9d7eb",
+    cardBackground: isDark
+      ? "linear-gradient(180deg, rgba(15,23,42,0.88), rgba(11,15,25,0.9))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(238,244,255,0.96))",
+    panelBackground: isDark ? "rgba(15,23,42,0.76)" : "rgba(255,255,255,0.9)",
+    pillBackground: isDark ? "rgba(15,23,42,0.92)" : "rgba(244,247,252,0.95)",
+    inputBackground: isDark ? "#0f172a" : "#ffffff",
+    inputBorder: isDark ? "#334155" : "#b8cae2",
+    inputText: isDark ? "#f8fafc" : "#102038",
+    buttonBackground: isDark ? "#172554" : "#dbeafe",
+    buttonBorder: isDark ? "#1d4ed8" : "#60a5fa",
+    buttonText: isDark ? "#dbeafe" : "#0f172a",
+    heading: isDark ? "#f8fafc" : "#102038",
+    mutedText: isDark ? "#94a3b8" : "#52637a",
+    subtleText: isDark ? "#9ca3af" : "#64748b",
+    neutralText: isDark ? "#cbd5e1" : "#334155",
+  };
+
   const sectionCardStyle = {
-    border: "1px solid #243041",
+    border: `1px solid ${themeColors.border}`,
     borderRadius: "14px",
-    background: "linear-gradient(180deg, rgba(15,23,42,0.88), rgba(11,15,25,0.9))",
-    boxShadow: "0 18px 50px rgba(0,0,0,0.18)",
+    background: themeColors.cardBackground,
+    boxShadow: isDark ? "0 18px 50px rgba(0,0,0,0.18)" : "0 18px 50px rgba(15,23,42,0.08)",
   };
 
   const pillStyle = {
     fontSize: "12px",
-    color: "#cbd5e1",
+    color: themeColors.neutralText,
     padding: "6px 10px",
     borderRadius: "999px",
-    border: "1px solid #243041",
-    background: "rgba(15,23,42,0.92)",
+    border: `1px solid ${themeColors.border}`,
+    background: themeColors.pillBackground,
   };
 
   const inputStyle = {
     minHeight: "40px",
     padding: "0 12px",
     borderRadius: "10px",
-    border: "1px solid #334155",
-    background: "#0f172a",
-    color: "#f8fafc",
+    border: `1px solid ${themeColors.inputBorder}`,
+    background: themeColors.inputBackground,
+    color: themeColors.inputText,
   };
 
   const buttonStyle = {
     minHeight: "40px",
     padding: "0 16px",
     borderRadius: "10px",
-    border: "1px solid #1d4ed8",
-    background: "#172554",
-    color: "#dbeafe",
+    border: `1px solid ${themeColors.buttonBorder}`,
+    background: themeColors.buttonBackground,
+    color: themeColors.buttonText,
     fontWeight: 600,
     cursor: "pointer",
   };
@@ -627,7 +647,7 @@ const StocksPage = () => {
       <div style={{ ...sectionCardStyle, padding: "18px", marginBottom: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: "28px", fontWeight: 800, color: "#f8fafc" }}>{selectedTicker} Stock Analysis</div>
+            <div style={{ fontSize: "28px", fontWeight: 800, color: themeColors.heading }}>{selectedTicker} Stock Analysis</div>
             <div style={{ marginTop: "6px", fontSize: "14px", color: chartMeta.headerTone }}>
               {livePrice !== null ? `Live Price: $${livePrice.toFixed(2)}  ${chartMeta.movePct >= 0 ? "+" : ""}${fmtPct(chartMeta.movePct)}` : "Waiting for live price..."}
             </div>
@@ -640,7 +660,7 @@ const StocksPage = () => {
           </div>
 
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px", color: "#94a3b8" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px", color: themeColors.mutedText }}>
               <span>Ticker Search</span>
               <input
                 type="text"
@@ -655,8 +675,8 @@ const StocksPage = () => {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: "16px", marginTop: "16px" }}>
-          <div style={{ border: "1px solid #243041", borderRadius: "12px", padding: "14px", background: "rgba(15,23,42,0.76)" }}>
-            <div style={{ fontSize: "20px", fontWeight: 700, color: "#f8fafc", marginBottom: "10px" }}>Live Candle Signal</div>
+          <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
+            <div style={{ fontSize: "20px", fontWeight: 700, color: themeColors.heading, marginBottom: "10px" }}>Live Candle Signal</div>
             <div style={{ display: "grid", gap: "6px", fontSize: "14px" }}>
               <div style={{ color: liveSignal?.continuation >= 65 ? "#22c55e" : "#d1d5db" }}>Continuation: {liveSignal?.continuation?.toFixed?.(0) ?? "-"}</div>
               <div style={{ color: liveSignal?.pullbackRisk >= 65 ? "#ef4444" : "#d1d5db" }}>Pullback Risk: {liveSignal?.pullbackRisk?.toFixed?.(0) ?? "-"}</div>
@@ -664,38 +684,38 @@ const StocksPage = () => {
               <div style={{ color: "#a7f3d0" }}>Phase: {liveSignal?.phase || "Insufficient Data"}</div>
               <div style={{ color: liveSignal?.tooLate ? "#ef4444" : "#d1d5db" }}>{liveSignal?.tooLate ? "Too Late: Yes" : "Too Late: No"}</div>
               <div style={{ color: "#fcd34d" }}>Plan: {liveSignal?.plan?.planLabel || "No Plan"}</div>
-              <div style={{ fontSize: "12px", color: "#cbd5e1" }}>Entry: {liveSignal?.plan?.entry ? liveSignal.plan.entry.toFixed(2) : "-"} | Stop: {liveSignal?.plan?.stop ? liveSignal.plan.stop.toFixed(2) : "-"}</div>
-              <div style={{ fontSize: "12px", color: "#cbd5e1" }}>Targets: 1R {liveSignal?.plan?.targets?.target1 ? liveSignal.plan.targets.target1.toFixed(2) : "-"} | 2R {liveSignal?.plan?.targets?.target2 ? liveSignal.plan.targets.target2.toFixed(2) : "-"} | 3R {liveSignal?.plan?.targets?.target3 ? liveSignal.plan.targets.target3.toFixed(2) : "-"}</div>
+              <div style={{ fontSize: "12px", color: themeColors.neutralText }}>Entry: {liveSignal?.plan?.entry ? liveSignal.plan.entry.toFixed(2) : "-"} | Stop: {liveSignal?.plan?.stop ? liveSignal.plan.stop.toFixed(2) : "-"}</div>
+              <div style={{ fontSize: "12px", color: themeColors.neutralText }}>Targets: 1R {liveSignal?.plan?.targets?.target1 ? liveSignal.plan.targets.target1.toFixed(2) : "-"} | 2R {liveSignal?.plan?.targets?.target2 ? liveSignal.plan.targets.target2.toFixed(2) : "-"} | 3R {liveSignal?.plan?.targets?.target3 ? liveSignal.plan.targets.target3.toFixed(2) : "-"}</div>
               <div style={{ color: "#93c5fd" }}>Live R: {liveSignal?.plan?.live?.rMultiple !== null && liveSignal?.plan?.live?.rMultiple !== undefined ? `${liveSignal.plan.live.rMultiple.toFixed(2)}R` : "-"} | Guidance: {liveSignal?.plan?.live?.guidance || "WAIT"}</div>
-              <div style={{ fontSize: "12px", color: "#9ca3af" }}>{liveSignal?.reason || "Waiting for live candles..."}</div>
-              <div style={{ fontSize: "12px", color: "#9ca3af" }}>
+              <div style={{ fontSize: "12px", color: themeColors.subtleText }}>{liveSignal?.reason || "Waiting for live candles..."}</div>
+              <div style={{ fontSize: "12px", color: themeColors.subtleText }}>
                 VWAP: {liveSignal?.vwap ? liveSignal.vwap.toFixed(2) : "-"} | Range(20): {liveSignal?.rangeLow ? liveSignal.rangeLow.toFixed(2) : "-"} - {liveSignal?.rangeHigh ? liveSignal.rangeHigh.toFixed(2) : "-"}
               </div>
             </div>
           </div>
 
           <div style={{ display: "grid", gap: "12px", alignContent: "start" }}>
-            <div style={{ border: "1px solid #243041", borderRadius: "12px", padding: "14px", background: "rgba(15,23,42,0.76)" }}>
-              <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "8px" }}>Workflow</div>
-              <div style={{ fontSize: "18px", fontWeight: 700, color: "#f8fafc" }}>{liveSignal?.plan?.planLabel || "No Plan"}</div>
+            <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
+              <div style={{ fontSize: "13px", color: themeColors.mutedText, marginBottom: "8px" }}>Workflow</div>
+              <div style={{ fontSize: "18px", fontWeight: 700, color: themeColors.heading }}>{liveSignal?.plan?.planLabel || "No Plan"}</div>
               <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <span style={pillStyle}>Entry {fmtPrice(liveSignal?.plan?.entry)}</span>
                 <span style={pillStyle}>Stop {fmtPrice(liveSignal?.plan?.stop)}</span>
                 <span style={pillStyle}>T1 {fmtPrice(liveSignal?.plan?.targets?.target1)}</span>
               </div>
             </div>
-            <div style={{ border: "1px solid #243041", borderRadius: "12px", padding: "14px", background: "rgba(15,23,42,0.76)" }}>
-              <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "8px" }}>Watchlist</div>
+            <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
+              <div style={{ fontSize: "13px", color: themeColors.mutedText, marginBottom: "8px" }}>Watchlist</div>
               <AddTicker />
             </div>
-            <div style={{ border: "1px solid #243041", borderRadius: "12px", padding: "14px", background: "rgba(15,23,42,0.76)" }}>
-              <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "8px" }}>Live Price Feed</div>
+            <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
+              <div style={{ fontSize: "13px", color: themeColors.mutedText, marginBottom: "8px" }}>Live Price Feed</div>
               <LiveStockUpdate ticker={selectedTicker} />
             </div>
           </div>
         </div>
       </div>
-      <MarketSignalsFeed selectedTicker={selectedTicker} />
+      <MarketSignalsFeed selectedTicker={selectedTicker} theme={theme} />
 
       {(safeChartData.length > 1 || loading || error || (!loading && safeChartData.length === 0)) && (
         <div className="stock-chart-card">

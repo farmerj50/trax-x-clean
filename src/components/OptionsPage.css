@@ -4,6 +4,10 @@
   color: #e6eefc;
 }
 
+body.light-mode .options-page {
+  color: #102038;
+}
+
 .options-page__shell {
   max-width: 1440px;
   margin: 0 auto;
@@ -19,6 +23,78 @@
   border: 1px solid rgba(120, 145, 180, 0.16);
   background: linear-gradient(180deg, #081526 0%, #06111f 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+body.light-mode .options-page__hero,
+body.light-mode .options-controls-card,
+body.light-mode .options-panel {
+  border-color: rgba(120, 145, 180, 0.2);
+  background: linear-gradient(180deg, #ffffff 0%, #eef4ff 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+body.light-mode .options-page__title,
+body.light-mode .options-controls-card__header h3,
+body.light-mode .options-panel__header h3,
+body.light-mode .options-status-pill strong {
+  color: #102038;
+}
+
+body.light-mode .options-page__subtitle,
+body.light-mode .options-controls-card__header p,
+body.light-mode .options-panel__header p {
+  color: rgba(15, 23, 42, 0.68);
+}
+
+body.light-mode .options-status-pill {
+  background: rgba(244, 247, 252, 0.95);
+  color: #334155;
+}
+
+body.light-mode .options-field__label,
+body.light-mode .options-metric-card__label,
+body.light-mode .options-plan-chip span,
+body.light-mode .options-engine-note__label,
+body.light-mode .options-row-card__top span,
+body.light-mode .options-side-item span {
+  color: rgba(96, 123, 166, 0.88);
+}
+
+body.light-mode .options-input {
+  border-color: rgba(120, 145, 180, 0.22);
+  background: rgba(255, 255, 255, 0.96);
+  color: #102038;
+}
+
+body.light-mode .options-btn.secondary {
+  border-color: rgba(120, 145, 180, 0.22);
+  background: rgba(244, 247, 252, 0.95);
+  color: #102038;
+}
+
+body.light-mode .options-metric-card,
+body.light-mode .options-plan-chip,
+body.light-mode .options-engine-note,
+body.light-mode .options-footnote,
+body.light-mode .options-row-card,
+body.light-mode .options-side-item {
+  border-color: rgba(120, 145, 180, 0.18);
+  background: rgba(244, 247, 252, 0.95);
+}
+
+body.light-mode .options-metric-card strong,
+body.light-mode .options-plan-chip strong,
+body.light-mode .options-row-card__top strong,
+body.light-mode .options-side-item strong {
+  color: #102038;
+}
+
+body.light-mode .options-engine-note,
+body.light-mode .options-footnote,
+body.light-mode .options-row-card__stats,
+body.light-mode .options-side-item p,
+body.light-mode .options-empty-state {
+  color: rgba(15, 23, 42, 0.76);
 }
 
 .options-page__hero {

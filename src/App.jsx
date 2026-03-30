@@ -31,6 +31,7 @@ const App = () => {
 
   useEffect(() => {
     document.body.classList.toggle("dark-mode", theme === "dark");
+    document.body.classList.toggle("light-mode", theme === "light");
     localStorage.setItem("theme", theme);
   }, [theme]);
 
@@ -154,16 +155,16 @@ const App = () => {
             </div>
           }
         />
-        <Route path="/stocks" element={<StocksPage />} />
+        <Route path="/stocks" element={<StocksPage theme={theme} />} />
         <Route path="/number-one-picks" element={<NumberOnePicksPage />} />
         <Route path="/anomalies" element={<AnomaliesPage />} />
         <Route path="/next-day-picks" element={<NextDayPicksPage />} />
         <Route path="/three-day-breakouts" element={<ThreeDayBreakoutsPage />} />
-        <Route path="/options" element={<OptionsPage />} />
-        <Route path="/crypto" element={<CryptoPage />} />
-        <Route path="/short-sales" element={<ShortSalesPage />} />
+        <Route path="/options" element={<OptionsPage theme={theme} />} />
+        <Route path="/crypto" element={<CryptoPage theme={theme} />} />
+        <Route path="/short-sales" element={<ShortSalesPage theme={theme} />} />
         <Route path="/biggest-gains" element={<BiggestGainsPage />} />
-        <Route path="/premarket-intelligence" element={<PremarketIntelligencePage />} />
+        <Route path="/premarket-intelligence" element={<PremarketIntelligencePage theme={theme} />} />
       </Routes>
     </Router>
   );

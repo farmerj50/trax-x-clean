@@ -4,8 +4,8 @@ body {
   padding: 0;
   background:
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28%),
-    linear-gradient(180deg, #04070d 0%, #02050a 100%);
-  color: #e6eefc;
+    linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%);
+  color: #102038;
   transition: background 0.3s ease, color 0.3s ease;
 }
 
@@ -14,6 +14,13 @@ body.dark-mode {
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28%),
     linear-gradient(180deg, #04070d 0%, #02050a 100%);
   color: #e6eefc;
+}
+
+body.light-mode {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28%),
+    linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%);
+  color: #102038;
 }
 
 a {
@@ -31,9 +38,9 @@ a {
   z-index: 1000;
   width: 100%;
   box-sizing: border-box;
-  background: rgba(6, 12, 22, 0.92);
-  border-bottom: 1px solid rgba(120, 145, 180, 0.14);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid rgba(120, 145, 180, 0.2);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(12px);
 }
 
@@ -41,7 +48,7 @@ a {
   margin: 0;
   font-size: 22px;
   font-weight: 800;
-  color: #f8fbff;
+  color: #102038;
   white-space: nowrap;
 }
 
@@ -62,9 +69,9 @@ a {
   min-height: 42px;
   padding: 0 16px;
   border-radius: 12px;
-  border: 1px solid rgba(120, 145, 180, 0.16);
-  background: rgba(17, 27, 45, 0.86);
-  color: #dbe7ff;
+  border: 1px solid rgba(120, 145, 180, 0.24);
+  background: rgba(255, 255, 255, 0.88);
+  color: #102038;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -73,8 +80,8 @@ a {
 
 .menu-buttons button:hover,
 .dropdown-btn:hover {
-  background: rgba(28, 41, 65, 0.96);
-  border-color: rgba(120, 145, 180, 0.28);
+  background: rgba(232, 240, 255, 0.98);
+  border-color: rgba(59, 130, 246, 0.3);
   transform: translateY(-1px);
 }
 
@@ -91,10 +98,10 @@ a {
   left: 0;
   min-width: 220px;
   padding: 8px;
-  background: rgba(8, 18, 34, 0.98);
-  border: 1px solid rgba(120, 145, 180, 0.16);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(120, 145, 180, 0.24);
   border-radius: 14px;
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
   overflow: hidden;
   z-index: 1100;
 }
@@ -103,14 +110,14 @@ a {
   display: block;
   padding: 10px 12px;
   border-radius: 10px;
-  color: #dbe7ff;
+  color: #102038;
   text-decoration: none;
   transition: background 0.2s ease, color 0.2s ease;
 }
 
 .dropdown-content a:hover {
-  background: rgba(29, 78, 216, 0.18);
-  color: #ffffff;
+  background: rgba(29, 78, 216, 0.1);
+  color: #0f172a;
 }
 
 .dropdown:hover .dropdown-content {
@@ -157,14 +164,14 @@ a {
   font-size: clamp(34px, 4vw, 48px);
   line-height: 1.02;
   font-weight: 800;
-  color: #ffffff;
+  color: #102038;
 }
 
 .scanner-page-subtitle {
   margin: 0;
   font-size: 17px;
   line-height: 1.55;
-  color: rgba(219, 231, 255, 0.72);
+  color: rgba(15, 23, 42, 0.72);
 }
 
 .scanner-page-badges {
@@ -180,14 +187,14 @@ a {
   min-height: 38px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid rgba(96, 165, 250, 0.18);
-  background: rgba(9, 19, 36, 0.84);
-  color: rgba(219, 231, 255, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(15, 23, 42, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .scanner-page-badge strong {
-  color: #ffffff;
+  color: #102038;
 }
 
 .scanner-alert {
@@ -206,12 +213,12 @@ a {
 }
 
 .scanner-card {
-  background: linear-gradient(180deg, #081526 0%, #06111f 100%);
-  border: 1px solid rgba(120, 145, 180, 0.16);
+  background: linear-gradient(180deg, #ffffff 0%, #eef4ff 100%);
+  border: 1px solid rgba(120, 145, 180, 0.18);
   border-radius: 20px;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.02),
-    0 12px 30px rgba(0, 0, 0, 0.28);
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 12px 30px rgba(15, 23, 42, 0.1);
 }
 
 .scanner-card-header {
@@ -231,12 +238,12 @@ a {
   margin: 0 0 6px;
   font-size: 18px;
   font-weight: 800;
-  color: #ffffff;
+  color: #102038;
 }
 
 .scanner-card-subtitle {
   margin: 0;
-  color: rgba(219, 231, 255, 0.72);
+  color: rgba(15, 23, 42, 0.68);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -269,13 +276,87 @@ a {
 }
 
 .scanner-btn.secondary {
-  border-color: rgba(120, 145, 180, 0.16);
-  background: rgba(17, 27, 45, 0.95);
-  color: #dbe7ff;
+  border-color: rgba(120, 145, 180, 0.22);
+  background: rgba(255, 255, 255, 0.92);
+  color: #102038;
   box-shadow: none;
 }
 
 .scanner-btn.secondary:hover:not(:disabled) {
+  background: rgba(232, 240, 255, 0.98);
+}
+
+body.dark-mode .menu-bar {
+  background: rgba(6, 12, 22, 0.92);
+  border-bottom: 1px solid rgba(120, 145, 180, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .menu-title {
+  color: #f8fbff;
+}
+
+body.dark-mode .menu-buttons button,
+body.dark-mode .dropdown-btn {
+  border: 1px solid rgba(120, 145, 180, 0.16);
+  background: rgba(17, 27, 45, 0.86);
+  color: #dbe7ff;
+}
+
+body.dark-mode .menu-buttons button:hover,
+body.dark-mode .dropdown-btn:hover {
+  background: rgba(28, 41, 65, 0.96);
+  border-color: rgba(120, 145, 180, 0.28);
+}
+
+body.dark-mode .dropdown-content {
+  background: rgba(8, 18, 34, 0.98);
+  border: 1px solid rgba(120, 145, 180, 0.16);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+}
+
+body.dark-mode .dropdown-content a {
+  color: #dbe7ff;
+}
+
+body.dark-mode .dropdown-content a:hover {
+  background: rgba(29, 78, 216, 0.18);
+  color: #ffffff;
+}
+
+body.dark-mode .scanner-page-title,
+body.dark-mode .scanner-card-title,
+body.dark-mode .scanner-page-badge strong {
+  color: #ffffff;
+}
+
+body.dark-mode .scanner-page-subtitle,
+body.dark-mode .scanner-card-subtitle {
+  color: rgba(219, 231, 255, 0.72);
+}
+
+body.dark-mode .scanner-page-badge {
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  background: rgba(9, 19, 36, 0.84);
+  color: rgba(219, 231, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+body.dark-mode .scanner-card {
+  background: linear-gradient(180deg, #081526 0%, #06111f 100%);
+  border: 1px solid rgba(120, 145, 180, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+body.dark-mode .scanner-btn.secondary {
+  border-color: rgba(120, 145, 180, 0.16);
+  background: rgba(17, 27, 45, 0.95);
+  color: #dbe7ff;
+}
+
+body.dark-mode .scanner-btn.secondary:hover:not(:disabled) {
   background: rgba(28, 41, 65, 0.98);
 }
 

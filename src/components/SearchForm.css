@@ -24,6 +24,10 @@
   font-weight: 700;
 }
 
+body.light-mode .scanner-field-label {
+  color: rgba(96, 123, 166, 0.88);
+}
+
 .scanner-input {
   width: 100%;
   background: rgba(17, 27, 45, 0.95);
@@ -34,6 +38,12 @@
   outline: none;
   min-height: 48px;
   box-sizing: border-box;
+}
+
+body.light-mode .scanner-input {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(120, 145, 180, 0.22);
+  color: #102038;
 }
 
 .scanner-input:focus {
