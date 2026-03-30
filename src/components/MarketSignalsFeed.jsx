@@ -782,7 +782,7 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
         <div style={{ margin: "0 0 4px 0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
           <h3 style={{ margin: 0 }}>Volatility Contraction Breakouts</h3>
           <div style={{ fontSize: "12px", color: "#9ca3af" }}>
-            Spike -> tight coil -> higher lows -> breakout trigger
+            {"Spike -> tight coil -> higher lows -> breakout trigger"}
           </div>
         </div>
         <div style={{ margin: "0 0 8px 0", color: "#9ca3af", fontSize: "12px" }}>

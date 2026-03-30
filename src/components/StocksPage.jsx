@@ -26,6 +26,7 @@ import {
 
 const POLYGON_WS_URL = "wss://delayed.polygon.io/stocks"; // 15-min delayed data
 const POLYGON_API_KEY = process.env.REACT_APP_POLYGON_API_KEY;
+const BUILD_MARKER = "TRAX BUILD 2026-03-30 v3";
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const fmtPrice = (value) => (Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "-");
@@ -318,6 +319,10 @@ const StocksPage = () => {
     { intervalType: "Years", interval: 1, text: "YTD" },
     { intervalType: "Years", interval: 3, text: "All" },
   ];
+
+  useEffect(() => {
+    console.log(BUILD_MARKER);
+  }, []);
 
   /** Ã°Å¸â€â€ž Fetch Historical Chart Data */
   const fetchStockData = async (tickerSymbol, showSpinner = true) => {
@@ -627,6 +632,7 @@ const StocksPage = () => {
               {livePrice !== null ? `Live Price: $${livePrice.toFixed(2)}  ${chartMeta.movePct >= 0 ? "+" : ""}${fmtPct(chartMeta.movePct)}` : "Waiting for live price..."}
             </div>
             <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <span style={pillStyle}>{BUILD_MARKER}</span>
               <span style={pillStyle}>Feed: {connectionStatus}</span>
               <span style={pillStyle}>Last update: {lastUpdate || "-"}</span>
               <span style={pillStyle}>Phase: {liveSignal?.phase || "Insufficient Data"}</span>
