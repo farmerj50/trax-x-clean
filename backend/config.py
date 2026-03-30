@@ -40,6 +40,7 @@ FINAL_AI_CSV_PATH = LOG_DIR / "final_ai_predictions.csv"
 
 # WebSocket
 POLYGON_WS_URL = "wss://delayed.polygon.io/stocks"
+ENABLE_LEGACY_POLYGON_WS = os.getenv("ENABLE_LEGACY_POLYGON_WS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # Market signal pipeline
 ENABLE_MARKET_SIGNALS = os.getenv("ENABLE_MARKET_SIGNALS", "true").strip().lower() in {"1", "true", "yes", "on"}

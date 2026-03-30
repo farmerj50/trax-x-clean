@@ -30,6 +30,8 @@ class PolygonMarketStream:
         self.subscribe_params = subscribe_params
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._authenticated = False
+        self._subscribed = False
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -44,6 +46,8 @@ class PolygonMarketStream:
     def _run(self) -> None:
         backoff = 2
         while not self._stop_event.is_set():
+            self._authenticated = False
+            self._subscribed = False
             ws = websocket.WebSocketApp(
                 self.ws_url,
                 on_open=self._on_open,
@@ -59,8 +63,7 @@ class PolygonMarketStream:
 
     def _on_open(self, ws) -> None:
         ws.send(json.dumps({"action": "auth", "params": self.api_key}))
-        ws.send(json.dumps({"action": "subscribe", "params": self.subscribe_params}))
-        logger.info("Polygon market stream connected and subscribed: %s", self.subscribe_params)
+        logger.info("Polygon market stream opened; awaiting auth for subscribe=%s", self.subscribe_params)
 
     def _on_message(self, ws, message: str) -> None:
         try:
@@ -74,6 +77,21 @@ class PolygonMarketStream:
 
         for event in data:
             ev = event.get("ev")
+            if ev == "status":
+                status = str(event.get("status") or "").lower()
+                logger.info(
+                    "Polygon market stream status: status=%s message=%s",
+                    event.get("status"),
+                    event.get("message"),
+                )
+                if status == "auth_success" and not self._subscribed:
+                    ws.send(json.dumps({"action": "subscribe", "params": self.subscribe_params}))
+                    self._authenticated = True
+                    self._subscribed = True
+                    logger.info("Polygon market stream subscribed: %s", self.subscribe_params)
+                elif status in {"auth_failed", "error"}:
+                    logger.error("Polygon market stream rejected auth/subscribe: %s", event)
+                continue
             if ev == "Q":
                 symbol = event.get("sym")
                 bid = event.get("bp")

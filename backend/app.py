@@ -263,6 +263,9 @@ def start_websocket_thread():
 
 
 def ensure_websocket_thread_running():
+    if not config.ENABLE_LEGACY_POLYGON_WS:
+        logging.info("Legacy Polygon websocket is disabled by ENABLE_LEGACY_POLYGON_WS.")
+        return
     global legacy_ws_thread
     with legacy_ws_thread_lock:
         if legacy_ws_thread and legacy_ws_thread.is_alive():
@@ -541,8 +544,9 @@ def predict_next_day(model, recent_data, scaler, features):
         print(f"❌ ERROR in predict_next_day: {e}")
         return 0  # Default to 0 in case of failure
 
-# Start WebSocket thread
-ensure_websocket_thread_running()
+# Start legacy Polygon websocket only when explicitly enabled.
+if config.ENABLE_LEGACY_POLYGON_WS:
+    ensure_websocket_thread_running()
 
 @app.route('/api/candlestick', methods=['GET'])
 def candlestick_chart():
