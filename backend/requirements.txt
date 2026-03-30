@@ -18,3 +18,4 @@ polygon-api-client
 ta
 apscheduler
 xgboost
+optuna
