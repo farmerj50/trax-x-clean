@@ -27,10 +27,23 @@ const toWebSocketBase = (value) => {
   return value.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:");
 };
 
+const getKnownProductionApiBase = () => {
+  if (typeof window === "undefined") return "";
+
+  const host = String(window.location.host || "").toLowerCase();
+  const knownHosts = {
+    "trax-x-clean-production.up.railway.app": "https://keen-hope-production-4a15.up.railway.app",
+  };
+
+  return knownHosts[host] || "";
+};
+
 const defaultApiBase = (() => {
   const configured =
     normalizeBaseUrl(process.env.REACT_APP_API_BASE) || getRuntimeConfigBase("API_BASE");
   if (configured) return configured;
+  const knownProductionBase = getKnownProductionApiBase();
+  if (knownProductionBase) return knownProductionBase;
   if (typeof window === "undefined") return "http://localhost:5000";
 
   // In CRA local dev, frontend runs at 3000 and backend at 5000.
@@ -45,6 +58,8 @@ const defaultSocketBase = (() => {
   const configured =
     normalizeBaseUrl(process.env.REACT_APP_SOCKET_BASE) || getRuntimeConfigBase("SOCKET_BASE");
   if (configured) return configured;
+  const knownProductionBase = getKnownProductionApiBase();
+  if (knownProductionBase) return knownProductionBase;
   if (typeof window === "undefined") return "ws://localhost:5000";
   return toWebSocketBase(defaultApiBase || window.location.origin);
 })();
