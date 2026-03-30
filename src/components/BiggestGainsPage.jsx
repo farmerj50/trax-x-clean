@@ -18,8 +18,7 @@ const BiggestGainsPage = () => {
       try {
         setLoading(true);
         setError("");
-        const res = await apiFetch("/api/next-day-picks");
-        const data = await res.json();
+        const data = await apiFetch("/api/next-day-picks");
         if (data?.candidates?.length) {
           setCandidates(data.candidates);
         } else {

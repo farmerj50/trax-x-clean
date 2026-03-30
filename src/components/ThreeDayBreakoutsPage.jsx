@@ -10,12 +10,7 @@ const ThreeDayBreakoutsPage = () => {
   useEffect(() => {
     const fetchBreakouts = async () => {
       try {
-        const res = await apiFetch("/api/three-day-breakouts");
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Failed to fetch three-day breakouts.");
-        }
+        const data = await apiFetch("/api/three-day-breakouts");
 
         if (data?.candidates?.length > 0) {
           setStocks(data.candidates);

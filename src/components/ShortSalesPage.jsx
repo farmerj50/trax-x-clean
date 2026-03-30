@@ -26,9 +26,7 @@ const ShortSalesPage = () => {
         .map((t) => t.trim().toUpperCase())
         .filter(Boolean)
         .join(",");
-      const res = await apiFetch(`/api/short-ideas?tickers=${encodeURIComponent(query)}`);
-      if (!res.ok) throw new Error("Backend short-ideas endpoint not available.");
-      const json = await res.json();
+      const json = await apiFetch(`/api/short-ideas?tickers=${encodeURIComponent(query)}`);
       if (json?.candidates?.length) {
         setData(json.candidates);
         setError("");

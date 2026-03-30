@@ -10,12 +10,7 @@ const NumberOnePicksPage = () => {
   useEffect(() => {
     const fetchTopPicks = async () => {
       try {
-        const res = await apiFetch("/api/number-one-picks");
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Failed to fetch number one picks.");
-        }
+        const data = await apiFetch("/api/number-one-picks");
 
         if (data?.candidates?.length > 0) {
           setStocks(data.candidates);

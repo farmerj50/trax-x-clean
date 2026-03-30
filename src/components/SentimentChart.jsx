@@ -17,8 +17,7 @@ const SentimentChart = ({ ticker }) => {
   useEffect(() => {
     const fetchSentimentData = async () => {
       try {
-        const response = await apiFetch(`/api/sentiment-plot?ticker=${ticker}`);
-        const data = await response.json();
+        const data = await apiFetch(`/api/sentiment-plot?ticker=${ticker}`);
 
         if (data && data.dates && data.positive && data.negative && data.neutral) {
           const formattedData = data.dates.map((date, index) => ({

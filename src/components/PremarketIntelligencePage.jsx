@@ -202,8 +202,7 @@ const PremarketIntelligencePage = () => {
     }
     try {
       setDetailLoading(true);
-      const response = await apiFetch(`/api/premarket/intelligence/${ticker}`);
-      const data = await response.json();
+      const data = await apiFetch(`/api/premarket/intelligence/${ticker}`);
       setDetail(data);
     } catch (err) {
       setDetail(null);
@@ -226,8 +225,7 @@ const PremarketIntelligencePage = () => {
         params.set("sector", nextFilters.sector);
       }
 
-      const response = await apiFetch(`/api/premarket/intelligence?${params}`);
-      const data = await response.json();
+      const data = await apiFetch(`/api/premarket/intelligence?${params}`);
       setPayload(data);
 
       const fallbackTicker = preferredTicker && data?.stocks?.some((item) => item.ticker === preferredTicker)

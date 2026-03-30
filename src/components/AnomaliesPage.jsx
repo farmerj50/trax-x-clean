@@ -11,8 +11,7 @@ const AnomaliesPage = () => {
   const fetchAnomalies = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await apiFetch(`/api/anomalies?date=${date}&threshold_multiplier=${threshold}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/anomalies?date=${date}&threshold_multiplier=${threshold}`);
 
       if (data?.candidates?.length) {
         const normalized = data.candidates

@@ -18,8 +18,7 @@ const TickerNewsWidget = ({ tickers }) => {
 
       try {
         const tickerString = tickers.join(",");
-        const response = await apiFetch(`/api/ticker-news?ticker=${tickerString}`);
-        const data = await response.json();
+        const data = await apiFetch(`/api/ticker-news?ticker=${tickerString}`);
 
         if (data?.error) {
           setNews({});

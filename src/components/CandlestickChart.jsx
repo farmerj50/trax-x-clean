@@ -29,8 +29,7 @@ const CandlestickChart = ({ ticker, entryPoint, exitPoint }) => {
 
     const fetchChartData = async () => {
       try {
-        let response = await apiFetch(`/api/candlestick?ticker=${ticker}`);
-        let data = await response.json();
+        const data = await apiFetch(`/api/candlestick?ticker=${ticker}`);
 
         console.log(`✅ API Response for ${ticker}:`, data); 
 

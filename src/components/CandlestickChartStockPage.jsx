@@ -29,8 +29,7 @@ const CandlestickChartStockPage = ({ ticker }) => {
       setLoading(true);
       setError("");
       try {
-        const response = await apiFetch(`/api/candlestick?ticker=${ticker}`);
-        const data = await response.json();
+        const data = await apiFetch(`/api/candlestick?ticker=${ticker}`);
 
         if (data.dates) {
           const formattedData = data.dates.map((date, index) => ({

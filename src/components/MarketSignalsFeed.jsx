@@ -86,8 +86,7 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
 
   const loadRecent = async () => {
     try {
-      const response = await apiFetch("/api/market-signals/recent?limit=100");
-      const data = await response.json();
+      const data = await apiFetch("/api/market-signals/recent?limit=100");
       if (Array.isArray(data?.signals)) {
         setSignals(data.signals.slice().reverse());
         setLastLoadCount(data.signals.length);
@@ -115,8 +114,7 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
         require_vwap: String(requireVwap),
         qualified_only: String(qualifiedOnly),
       });
-      const response = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
-      const data = await response.json();
+      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
       const loadedTargets = Array.isArray(data?.targets) ? data.targets : [];
       setTargets(loadedTargets);
       setFailureSummary(Array.isArray(data?.debug?.failure_counts) ? data.debug.failure_counts : []);
@@ -125,8 +123,7 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
       if (qualifiedOnly && loadedTargets.length <= 1) {
         const fallbackParams = new URLSearchParams(params);
         fallbackParams.set("qualified_only", "false");
-        const fallbackResponse = await apiFetch(`/api/market-signals/qualified-targets?${fallbackParams}`);
-        const fallbackData = await fallbackResponse.json();
+        const fallbackData = await apiFetch(`/api/market-signals/qualified-targets?${fallbackParams}`);
         const misses = (Array.isArray(fallbackData?.targets) ? fallbackData.targets : [])
           .filter((item) => !item.qualified)
           .slice(0, 8);
@@ -160,8 +157,7 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
         require_vwap: String(requireVwap),
         qualified_only: "false", // show A/B/watch even if not fully qualified
       });
-      const response = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
-      const data = await response.json();
+      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
       setPreTargets(Array.isArray(data?.targets) ? data.targets : []);
       setPreFailureSummary(Array.isArray(data?.debug?.failure_counts) ? data.debug.failure_counts : []);
     } catch (error) {
@@ -189,15 +185,13 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
         qualified_only: "false",
         pool_limit: "600",
       });
-      const response = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
-      const data = await response.json();
+      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
       const loadedTargets = Array.isArray(data?.targets) ? data.targets.slice(0, 12) : [];
       setPennyTargets(loadedTargets);
       setPennyFailureSummary(Array.isArray(data?.debug?.failure_counts) ? data.debug.failure_counts : []);
       const symbols = loadedTargets.map((item) => item.symbol).filter(Boolean);
       if (symbols.length > 0) {
-        const newsResponse = await apiFetch(`/api/ticker-news?ticker=${symbols.join(",")}`);
-        const newsData = await newsResponse.json();
+        const newsData = await apiFetch(`/api/ticker-news?ticker=${symbols.join(",")}`);
         setPennyNews(newsData && typeof newsData === "object" ? newsData : {});
       }
     } catch (error) {
@@ -220,8 +214,7 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
         min_day_change_pct: "8",
         min_rvol: "2",
       });
-      const response = await apiFetch(`/api/volatility-contraction-breakouts?${params}`);
-      const data = await response.json();
+      const data = await apiFetch(`/api/volatility-contraction-breakouts?${params}`);
       setVolatilityTargets(Array.isArray(data?.candidates) ? data.candidates.slice(0, 12) : []);
     } catch (error) {
       setVolatilityTargets([]);
@@ -243,11 +236,7 @@ const MarketSignalsFeed = ({ selectedTicker }) => {
         near_min_score: String(aiNearMinScore),
         near_distance_pct: String(aiNearDistancePct),
       });
-      const response = await apiFetch(`/api/ai-picks?${params}`);
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || "AI picks request failed");
-      }
+      const data = await apiFetch(`/api/ai-picks?${params}`);
       setAiPicks(Array.isArray(data?.picks) ? data.picks : []);
       setAiPicksGeneratedAt(String(data?.generated_at || ""));
       setAiPicksDebug(data?.debug && typeof data.debug === "object" ? data.debug : null);

@@ -248,47 +248,44 @@ const OptionsPage = () => {
       setConnectionState("connecting");
       setLastChecked("");
       setChain([]);
-      const res = await apiFetch(`/api/options-strategies?ticker=${ticker}&underlying=${underlying || ""}`);
-      if (res.ok) {
-        const data = await res.json();
-        const uiSpot = Number(underlying || 0);
-        const apiSpot = Number(data?.underlying || 0);
-        const spot = uiSpot > 0 ? uiSpot : apiSpot;
-        const shouldTrustApiSpot =
-          apiSpot > 0 && (uiSpot <= 0 || Math.abs(apiSpot - uiSpot) / Math.max(uiSpot, 1) < 0.5);
-        if (shouldTrustApiSpot) setUnderlying(apiSpot);
-        const mapped = (data?.strategies || []).map((s) => {
-          const strike = Number(s.strike || s.lower_strike || spot || 0);
-          const bid = Number(s.bid || s.premium || 0);
-          const ask = Number(s.ask || (s.premium ? s.premium * 1.1 : 0));
-          const type = s.type === "cash_secured_put" || s.type === "put" ? "put" : "call";
-          const delta = Number.isFinite(Number(s.delta))
-            ? Number(s.delta)
-            : estimateDelta(type, strike, spot);
-          return {
-            type,
-            strike,
-            expiry: normalizeExpiry(s.expiry || s.exp) || "2026-03-20",
-            bid,
-            ask,
-            delta,
-            iv: Number(s.iv || 0),
-            oi: Number(s.oi || 0),
-            volume: Number(s.volume || 0),
-          };
-        });
-        const saneMapped = mapped.filter((c) => saneStrikeForSpot(c.strike, Math.max(spot, 1)));
-        if (saneMapped.length) {
-          setChain(saneMapped);
-          setConnectionState("connected");
-          return;
-        }
-        if (mapped.length && !saneMapped.length) {
-          setChain(buildSpotFallbackChain(spot));
-          setConnectionState("error");
-          setError("Dropped mismatched chain rows; using spot-centered fallback contracts.");
-          return;
-        }
+      const data = await apiFetch(`/api/options-strategies?ticker=${ticker}&underlying=${underlying || ""}`);
+      const uiSpot = Number(underlying || 0);
+      const apiSpot = Number(data?.underlying || 0);
+      const spot = uiSpot > 0 ? uiSpot : apiSpot;
+      const shouldTrustApiSpot =
+        apiSpot > 0 && (uiSpot <= 0 || Math.abs(apiSpot - uiSpot) / Math.max(uiSpot, 1) < 0.5);
+      if (shouldTrustApiSpot) setUnderlying(apiSpot);
+      const mapped = (data?.strategies || []).map((s) => {
+        const strike = Number(s.strike || s.lower_strike || spot || 0);
+        const bid = Number(s.bid || s.premium || 0);
+        const ask = Number(s.ask || (s.premium ? s.premium * 1.1 : 0));
+        const type = s.type === "cash_secured_put" || s.type === "put" ? "put" : "call";
+        const delta = Number.isFinite(Number(s.delta))
+          ? Number(s.delta)
+          : estimateDelta(type, strike, spot);
+        return {
+          type,
+          strike,
+          expiry: normalizeExpiry(s.expiry || s.exp) || "2026-03-20",
+          bid,
+          ask,
+          delta,
+          iv: Number(s.iv || 0),
+          oi: Number(s.oi || 0),
+          volume: Number(s.volume || 0),
+        };
+      });
+      const saneMapped = mapped.filter((c) => saneStrikeForSpot(c.strike, Math.max(spot, 1)));
+      if (saneMapped.length) {
+        setChain(saneMapped);
+        setConnectionState("connected");
+        return;
+      }
+      if (mapped.length && !saneMapped.length) {
+        setChain(buildSpotFallbackChain(spot));
+        setConnectionState("error");
+        setError("Dropped mismatched chain rows; using spot-centered fallback contracts.");
+        return;
       }
       setChain(buildSpotFallbackChain(Number(underlying || 45)));
       setConnectionState("error");
@@ -320,9 +317,7 @@ const OptionsPage = () => {
         min_rvol: "0",
         pool_limit: "140",
       });
-      const res = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
-      if (!res.ok) throw new Error("pre-breakout fetch failed");
-      const data = await res.json();
+      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
       const sym = String(ticker || "").toUpperCase();
       const found =
         (Array.isArray(data?.targets) ? data.targets : []).find(
@@ -348,10 +343,9 @@ const OptionsPage = () => {
         setSniperError("Enter a ticker first.");
         return;
       }
-      const response = await apiFetch(
+      const data = await apiFetch(
         `/api/options/sniper/${encodeURIComponent(activeTicker)}?top_contracts_per_ticker=5`
       );
-      const data = await response.json();
       const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
       setSniperCandidates(candidates);
       if (candidates.length === 0) {

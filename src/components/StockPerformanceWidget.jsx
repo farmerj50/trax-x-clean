@@ -10,9 +10,7 @@ const StockPerformanceWidget = ({ ticker }) => {
   useEffect(() => {
     const fetchPerformanceData = async () => {
       try {
-        const response = await apiFetch(`/api/stock-performance?ticker=${ticker}`);
-        if (!response.ok) throw new Error("Failed to fetch performance data");
-        const data = await response.json();
+        const data = await apiFetch(`/api/stock-performance?ticker=${ticker}`);
         setPerformanceData(data);
       } catch (error) {
         console.error("Error fetching stock performance data:", error);

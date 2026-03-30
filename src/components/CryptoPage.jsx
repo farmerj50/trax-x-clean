@@ -18,9 +18,8 @@ const CryptoPage = () => {
     try {
       setLoading(true);
       setError("");
-      const res = await apiFetch(`/api/crypto-signals?ticker=BTC`);
-      const data = await res.json();
-      if (res.ok && data?.signals) {
+      const data = await apiFetch(`/api/crypto-signals?ticker=BTC`);
+      if (data?.signals) {
         setCoins([
           {
             id: data.signals.ticker.toLowerCase(),

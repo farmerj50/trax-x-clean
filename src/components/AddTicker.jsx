@@ -9,7 +9,7 @@ const AddTicker = () => {
         if (!ticker) return;
 
         try {
-            const response = await apiFetch("/api/add_ticker", {
+            const data = await apiFetch("/api/add_ticker", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -17,7 +17,6 @@ const AddTicker = () => {
                 body: JSON.stringify({ ticker }),
             });
 
-            const data = await response.json();
             alert(data.message); // Show confirmation
         } catch (error) {
             console.error("Error adding ticker:", error);

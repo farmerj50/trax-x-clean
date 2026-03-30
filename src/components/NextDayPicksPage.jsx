@@ -10,12 +10,7 @@ const NextDayPicksPage = () => {
   useEffect(() => {
     const fetchNextDayPicks = async () => {
       try {
-        const res = await apiFetch("/api/next-day-picks");
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Failed to fetch next day picks.");
-        }
+        const data = await apiFetch("/api/next-day-picks");
 
         if (data?.candidates?.length > 0) {
           const normalized = data.candidates.map((c) => ({ ...c, T: c.ticker || c.T }));
