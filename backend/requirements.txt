@@ -17,3 +17,4 @@ tensorflow
 polygon-api-client
 ta
 apscheduler
+xgboost
