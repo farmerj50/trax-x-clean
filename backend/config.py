@@ -45,7 +45,7 @@ ENABLE_LEGACY_POLYGON_WS = os.getenv("ENABLE_LEGACY_POLYGON_WS", "false").strip(
 # Market signal pipeline
 ENABLE_MARKET_SIGNALS = os.getenv("ENABLE_MARKET_SIGNALS", "true").strip().lower() in {"1", "true", "yes", "on"}
 MARKET_SIGNALS_BIG_PRINT_THRESHOLD = float(os.getenv("MARKET_SIGNALS_BIG_PRINT_THRESHOLD", "10000000"))
-MARKET_SIGNALS_SUBSCRIBE = os.getenv("MARKET_SIGNALS_SUBSCRIBE", "T.*,Q.*")
+MARKET_SIGNALS_SUBSCRIBE = os.getenv("MARKET_SIGNALS_SUBSCRIBE", "").strip()
 
 # Options flow (Intrinio)
 ENABLE_OPTIONS_FLOW_SIGNALS = os.getenv("ENABLE_OPTIONS_FLOW_SIGNALS", "false").strip().lower() in {"1", "true", "yes", "on"}

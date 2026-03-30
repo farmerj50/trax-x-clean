@@ -32,6 +32,7 @@ class PolygonMarketStream:
         self._stop_event = threading.Event()
         self._authenticated = False
         self._subscribed = False
+        self._disable_reconnect = False
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -45,7 +46,7 @@ class PolygonMarketStream:
 
     def _run(self) -> None:
         backoff = 2
-        while not self._stop_event.is_set():
+        while not self._stop_event.is_set() and not self._disable_reconnect:
             self._authenticated = False
             self._subscribed = False
             ws = websocket.WebSocketApp(
@@ -56,7 +57,7 @@ class PolygonMarketStream:
                 on_close=self._on_close,
             )
             ws.run_forever()
-            if self._stop_event.is_set():
+            if self._stop_event.is_set() or self._disable_reconnect:
                 break
             time.sleep(backoff)
             backoff = min(backoff * 2, 30)
@@ -85,12 +86,18 @@ class PolygonMarketStream:
                     event.get("message"),
                 )
                 if status == "auth_success" and not self._subscribed:
-                    ws.send(json.dumps({"action": "subscribe", "params": self.subscribe_params}))
                     self._authenticated = True
-                    self._subscribed = True
-                    logger.info("Polygon market stream subscribed: %s", self.subscribe_params)
+                    if self.subscribe_params:
+                        ws.send(json.dumps({"action": "subscribe", "params": self.subscribe_params}))
+                        self._subscribed = True
+                        logger.info("Polygon market stream subscribed: %s", self.subscribe_params)
+                    else:
+                        self._subscribed = True
+                        logger.info("Polygon market stream auth succeeded with no subscribe params; stream is idle.")
                 elif status in {"auth_failed", "error"}:
                     logger.error("Polygon market stream rejected auth/subscribe: %s", event)
+                    self._disable_reconnect = True
+                    self._stop_event.set()
                 continue
             if ev == "Q":
                 symbol = event.get("sym")
@@ -115,10 +122,16 @@ class PolygonMarketStream:
                     if signal:
                         self.emit_signal(signal)
 
-    @staticmethod
-    def _on_error(ws, error) -> None:
+    def _on_error(self, ws, error) -> None:
         logger.warning("Polygon market stream error: %s", error)
 
-    @staticmethod
-    def _on_close(ws, close_status_code, close_msg) -> None:
+    def _on_close(self, ws, close_status_code, close_msg) -> None:
+        if close_status_code == 1008:
+            self._disable_reconnect = True
+            self._stop_event.set()
+            logger.error(
+                "Polygon market stream disabled after policy-violation close code 1008. "
+                "Set MARKET_SIGNALS_SUBSCRIBE to an allowed symbol list instead of %s.",
+                self.subscribe_params,
+            )
         logger.info("Polygon market stream closed: %s %s", close_status_code, close_msg)
