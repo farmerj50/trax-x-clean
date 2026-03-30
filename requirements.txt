@@ -1,3 +1,0 @@
-# Root Python requirements intentionally left empty.
-# Railway frontend/static deploys should not install backend dependencies from repo root.
-# Use backend/requirements.txt for the Flask service.
