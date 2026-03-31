@@ -71,7 +71,16 @@ const App = () => {
       }
     } catch (err) {
       console.error("Fetch error:", err);
-      setErrorMsg("Failed to load stocks. Check backend.");
+      const message = String(err?.message || "");
+      const scannerUnavailable =
+        message.includes("SCAN_UNAVAILABLE") ||
+        message.includes("/api/scan-stocks") ||
+        message.includes("xgb_ticker_encoder.pkl");
+      setErrorMsg(
+        scannerUnavailable
+          ? "This app only provides scans during live market data. Please try scanning again during normal financial market hours."
+          : "Failed to load stocks. Check backend."
+      );
       setStocks([]);
       setTickers([]);
     } finally {

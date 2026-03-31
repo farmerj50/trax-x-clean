@@ -1025,9 +1025,16 @@ def scan_stocks():
     try:
         logging.info("📌 Starting scan-stocks process...")
 
-        # ✅ Load LabelEncoder (Ticker Encoding)
-        ticker_encoder = joblib.load(TICKER_ENCODER_PATH)
-
+        model_artifacts_available = all(
+            path.exists() for path in (TICKER_ENCODER_PATH, XGB_FEATURES_PATH, XGB_MODEL_PATH)
+        )
+        scanner_unavailable_msg = (
+            "Scanner unavailable: live model-backed scan artifacts are missing. "
+            "Scan results depend on live data and cannot be shown right now."
+        )
+        if not model_artifacts_available:
+            logging.error(scanner_unavailable_msg)
+            return jsonify({"error": scanner_unavailable_msg, "code": "SCAN_UNAVAILABLE"}), 503
         # ✅ Extract filtering parameters
         min_price = float(request.args.get("min_price", 0))
         max_price = float(request.args.get("max_price", float("inf")))
@@ -1074,18 +1081,15 @@ def scan_stocks():
                     ticker_encoder.classes_ = updated_classes
                 latest_rows["ticker_encoded"] = ticker_encoder.transform(latest_rows["ticker"].astype(str))
         except Exception as enc_err:
-            logging.error(f"❌ Error encoding tickers: {enc_err}")
-            return jsonify({"error": "Ticker encoding failed"}), 500
-
-        # ✅ Ensure feature order is correct
+            logging.error(f"Scanner unavailable because ticker encoding failed: {enc_err}")
+            return jsonify({"error": scanner_unavailable_msg, "code": "SCAN_UNAVAILABLE"}), 503
         trained_features = joblib.load(XGB_FEATURES_PATH)
-        for feature in trained_features:
-            if feature not in latest_rows.columns:
-                logging.error(f"❌ Missing feature expected by model: {feature}")
-                return jsonify({"error": f"Missing feature for model: {feature}"}), 500
-
-        logging.info(f"📌 Features in dataset before filtering: {latest_rows.columns.tolist()}")
-
+        missing_features = [feature for feature in trained_features if feature not in latest_rows.columns]
+        if missing_features:
+            logging.error(f"Scanner unavailable because model features are missing: {missing_features}")
+            return jsonify({"error": scanner_unavailable_msg, "code": "SCAN_UNAVAILABLE"}), 503
+        else:
+            logging.info(f"📌 Features in dataset before filtering: {latest_rows.columns.tolist()}")
         # ✅ Apply filtering conditions (liquidity, momentum, risk)
         def apply_filters(df, vol_min, atr_low, atr_high):
             return df[
@@ -1116,8 +1120,6 @@ def scan_stocks():
                 return jsonify({"candidates": []}), 200
             filtered_data = fallback
 
-        logging.info(f"📌 Stocks after all filtering steps: {len(filtered_data)}")
-
         # ✅ Load XGBoost Model
         xgb_model = joblib.load(XGB_MODEL_PATH)
 
@@ -1125,8 +1127,8 @@ def scan_stocks():
         try:
             xgb_input = filtered_data[trained_features]
         except KeyError as e:
-            logging.error(f"❌ ERROR: Missing features in dataset: {e}")
-            return jsonify({"error": "Missing features for XGBoost"}), 500
+            logging.error(f"Scanner unavailable because XGBoost input is invalid: {e}")
+            return jsonify({"error": scanner_unavailable_msg, "code": "SCAN_UNAVAILABLE"}), 503
 
         # ✅ Predict using XGBoost
         if hasattr(xgb_model, "predict_proba"):
@@ -1140,7 +1142,6 @@ def scan_stocks():
         if proba is not None:
             xgb_filtered_data["model_score"] = proba[xgb_predictions == 1]
         logging.info(f"📌 Stocks selected after XGBoost: {len(xgb_filtered_data)}")
-
         # ✅ Restore 'T' column before AI
         xgb_filtered_data["T"] = xgb_filtered_data["ticker"]
 
@@ -3407,3 +3408,4 @@ if __name__ == "__main__":
         debug=False,
         allow_unsafe_werkzeug=True
     )
+
