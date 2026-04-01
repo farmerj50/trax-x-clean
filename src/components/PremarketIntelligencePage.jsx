@@ -27,6 +27,42 @@ const formatMoney = (value) => {
   return `$${number.toFixed(0)}`;
 };
 
+const formatPressureState = (value) => {
+  const normalized = String(value || "").replace(/_/g, " ").trim();
+  if (!normalized) return "early watch";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const formatTriggerFlag = (value) => {
+  const normalized = String(value || "").replace(/_/g, " ").trim();
+  if (!normalized) return "";
+  return normalized
+    .split(" ")
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+    .join(" ");
+};
+
+const getDisplayScore = (stock) => Number(stock?.detectorScore ?? stock?.earlyPressureScore ?? stock?.score ?? 0);
+
+const getDisplayState = (stock) =>
+  String(
+    stock?.detectorState ??
+      stock?.earlyPressureState ??
+      stock?.setupType ??
+      stock?.conviction ??
+      "watch"
+  ).replace(/_/g, " ");
+
+const getDisplaySummary = (stock) => {
+  const state = String(stock?.detectorState || stock?.earlyPressureState || "").toLowerCase();
+  if (state === "triggered") return "Triggered";
+  if (state === "arming") return "Arming";
+  if (state === "watch") return "Watch";
+  if (state === "near_breakout") return "Near breakout";
+  if (state === "building_pressure") return "Building pressure";
+  return formatPressureState(getDisplayState(stock));
+};
+
 const scoreColor = (score) => {
   if (score >= 85) return "#22c55e";
   if (score >= 70) return "#f59e0b";
@@ -47,7 +83,7 @@ const tileAccent = (row) => {
 };
 
 const tileBackground = (row) => {
-  const score = Number(row?.score || 0);
+  const score = getDisplayScore(row);
   if (score >= 85) return "linear-gradient(180deg, rgba(22,101,52,0.68), rgba(6,78,59,0.92))";
   if (score >= 70) return "linear-gradient(180deg, rgba(146,64,14,0.68), rgba(120,53,15,0.92))";
   return "linear-gradient(180deg, rgba(30,41,59,0.74), rgba(15,23,42,0.96))";
@@ -170,14 +206,15 @@ const ScoreBreakdown = ({ breakdown }) => {
 
 const PremarketIntelligencePage = () => {
   const [filters, setFilters] = useState({
-    minGap: "2",
-    minVolume: "250000",
+    minGap: "1",
+    minVolume: "100000",
     sector: "",
     positiveOnly: true,
     limit: "8",
   });
   const [payload, setPayload] = useState({
     topPicks: [],
+    earlySetupWatch: [],
     heatmap: [],
     stocks: [],
     marketSummary: {},
@@ -202,7 +239,7 @@ const PremarketIntelligencePage = () => {
     }
     try {
       setDetailLoading(true);
-      const data = await apiFetch(`/api/premarket/intelligence/${ticker}`);
+      const data = await apiFetch(`/api/premarket/intelligence/${ticker}`, { timeoutMs: 20000 });
       setDetail(data);
     } catch (err) {
       setDetail(null);
@@ -212,6 +249,7 @@ const PremarketIntelligencePage = () => {
   };
 
   const loadPageData = async (nextFilters = filters, preferredTicker = "") => {
+    const hasExistingData = Boolean(payload.topPicks?.length || payload.heatmap?.length || payload.stocks?.length);
     try {
       setLoading(true);
       setError("");
@@ -225,7 +263,7 @@ const PremarketIntelligencePage = () => {
         params.set("sector", nextFilters.sector);
       }
 
-      const data = await apiFetch(`/api/premarket/intelligence?${params}`);
+      const data = await apiFetch(`/api/premarket/intelligence?${params}`, { timeoutMs: 35000 });
       setPayload(data);
 
       const fallbackTicker = preferredTicker && data?.stocks?.some((item) => item.ticker === preferredTicker)
@@ -233,19 +271,27 @@ const PremarketIntelligencePage = () => {
         : data?.topPicks?.[0]?.ticker || "";
 
       setSelectedTicker(fallbackTicker);
-      await loadDetail(fallbackTicker);
+      loadDetail(fallbackTicker);
     } catch (err) {
-      setPayload({
-        topPicks: [],
-        heatmap: [],
-        stocks: [],
-        marketSummary: {},
-        marketSession: "premarket",
-        timestamp: "",
-      });
-      setSelectedTicker("");
-      setDetail(null);
-      setError(err.message || "Failed to load premarket intelligence.");
+      if (!hasExistingData) {
+        setPayload({
+          topPicks: [],
+          earlySetupWatch: [],
+          heatmap: [],
+          stocks: [],
+          marketSummary: {},
+          marketSession: "premarket",
+          timestamp: "",
+        });
+        setSelectedTicker("");
+        setDetail(null);
+      }
+      const errorMessage = String(err?.message || "");
+      setError(
+        errorMessage.includes("Failed to fetch") || errorMessage.includes("timed out")
+          ? "Unable to refresh the premarket scan right now. Please try again in a moment."
+          : errorMessage || "Failed to load premarket intelligence."
+      );
     } finally {
       setLoading(false);
     }
@@ -265,8 +311,8 @@ const PremarketIntelligencePage = () => {
 
   const handleResetFilters = () => {
     const reset = {
-      minGap: "2",
-      minVolume: "250000",
+      minGap: "1",
+      minVolume: "100000",
       sector: "",
       positiveOnly: true,
       limit: "8",
@@ -281,6 +327,8 @@ const PremarketIntelligencePage = () => {
   };
 
   const selectedStock = detail || payload.topPicks.find((item) => item.ticker === selectedTicker) || null;
+  const selectedDisplayScore = getDisplayScore(selectedStock);
+  const selectedDisplaySummary = getDisplaySummary(selectedStock);
   const timestampLabel = payload.timestamp ? new Date(payload.timestamp).toLocaleString() : "Waiting for first scan";
 
   return (
@@ -300,6 +348,7 @@ const PremarketIntelligencePage = () => {
               <span className="status-badge"><strong>Session:</strong> {payload.marketSession || "premarket"}</span>
               <span className="status-badge"><strong>Last updated:</strong> {timestampLabel}</span>
               <span className="status-badge"><strong>Top sector:</strong> {payload.marketSummary?.highestConvictionSector || "Unclassified"}</span>
+              <span className="status-badge"><strong>Early watch:</strong> {Number(payload.marketSummary?.earlySetupCount || 0)}</span>
             </div>
           </div>
 
@@ -371,10 +420,17 @@ const PremarketIntelligencePage = () => {
             </div>
 
             <div className="premarket-actions">
-              <button className="btn-primary" type="button" onClick={handleApplyFilters}>
-                Refresh scan
+              <button className="btn-primary" type="button" onClick={handleApplyFilters} disabled={loading}>
+                {loading ? (
+                  <>
+                    <span className="btn-spinner" aria-hidden="true" />
+                    Refreshing...
+                  </>
+                ) : (
+                  "Refresh scan"
+                )}
               </button>
-              <button className="btn-secondary" type="button" onClick={handleResetFilters}>
+              <button className="btn-secondary" type="button" onClick={handleResetFilters} disabled={loading}>
                 Reset
               </button>
             </div>
@@ -393,34 +449,48 @@ const PremarketIntelligencePage = () => {
 
               <div className="premarket-picks">
                 {payload.topPicks.map((stock) => (
-                  <button
-                    key={stock.ticker}
-                    type="button"
-                    className={`pick-card ${selectedTicker === stock.ticker ? "active" : ""}`}
-                    onClick={() => handleSelectTicker(stock.ticker)}
-                    style={{ textAlign: "left" }}
-                  >
-                    <div className="pick-header">
-                      <div>
-                        <div className="pick-ticker">{stock.ticker}</div>
-                        <div style={{ marginTop: "6px", fontSize: "12px", color: "#94a3b8" }}>{stock.setupType?.replace(/_/g, " ")}</div>
-                      </div>
-                      <div className="pick-score" style={{ color: scoreColor(stock.score) }}>
-                        {Number(stock.score || 0).toFixed(0)}
-                      </div>
-                    </div>
+                  (() => {
+                    const displayScore = getDisplayScore(stock);
+                    const displaySummary = getDisplaySummary(stock);
+                    return (
+                      <button
+                        key={stock.ticker}
+                        type="button"
+                        className={`pick-card ${selectedTicker === stock.ticker ? "active" : ""}`}
+                        onClick={() => handleSelectTicker(stock.ticker)}
+                        style={{ textAlign: "left" }}
+                      >
+                        <div className="pick-header">
+                          <div>
+                            <div className="pick-ticker">{stock.ticker}</div>
+                            <div style={{ marginTop: "6px", fontSize: "12px", color: "#94a3b8" }}>{displaySummary}</div>
+                          </div>
+                          <div className="pick-score" style={{ color: scoreColor(displayScore) }}>
+                            {displayScore.toFixed(0)}
+                          </div>
+                        </div>
 
-                    <div className="premarket-meta">
-                      <span className="premarket-mini-chip">{formatPct(stock.gapPercent)}</span>
-                      <span className="premarket-mini-chip">{formatVolume(stock.premarketVolume)} vol</span>
-                      <span className="premarket-mini-chip">{stock.liquidityGrade} liquidity</span>
-                    </div>
+                        <div className="premarket-meta">
+                          <span className="premarket-mini-chip">{formatPct(stock.gapPercent)}</span>
+                          <span className="premarket-mini-chip">{formatVolume(stock.premarketVolume)} vol</span>
+                          <span className="premarket-mini-chip">{displaySummary}</span>
+                        </div>
 
-                    <div className="premarket-pick-copy">{stock.aiSummary}</div>
-                    <div className="premarket-pick-copy" style={{ color: "#94a3b8" }}>
-                      Risk: {stock.risk}
-                    </div>
-                  </button>
+                        <div className="premarket-meta">
+                          {(stock.triggerFlags || []).slice(0, 2).map((flag) => (
+                            <span key={`${stock.ticker}-${flag}`} className="premarket-mini-chip">
+                              {formatTriggerFlag(flag)}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="premarket-pick-copy">{stock.aiSummary}</div>
+                        <div className="premarket-pick-copy" style={{ color: "#94a3b8" }}>
+                          Risk: {stock.risk}
+                        </div>
+                      </button>
+                    );
+                  })()
                 ))}
               </div>
             </div>
@@ -442,7 +512,60 @@ const PremarketIntelligencePage = () => {
                   {selectedStock?.ticker || "None"}
                 </div>
               </div>
+              <div className="summary-card">
+                <div className="summary-label">Early Setup Watch</div>
+                <div className="summary-value">{Number(payload.marketSummary?.earlySetupCount || 0)}</div>
+              </div>
             </div>
+
+            {payload.earlySetupWatch?.length ? (
+              <div className="early-watch-panel" style={{ marginTop: "18px" }}>
+                <div className="premarket-heatmap-header">
+                  <div>
+                    <h3 className="panel-title" style={{ marginBottom: "6px" }}>Early Setup Watch</h3>
+                    <div className="panel-subtitle">Developing premarket names with improving pressure near actionable levels.</div>
+                  </div>
+                  <div className="top-badges">
+                    <span className="premarket-mini-chip">Pressure score = early setup quality</span>
+                    <span className="premarket-mini-chip">Near high = closer to breakout</span>
+                  </div>
+                </div>
+
+                <div className="early-watch-grid">
+                  {payload.earlySetupWatch.map((stock) => (
+                    <button
+                      key={`early-${stock.ticker}`}
+                      type="button"
+                      className={`early-watch-card ${selectedTicker === stock.ticker ? "active" : ""}`}
+                      onClick={() => handleSelectTicker(stock.ticker)}
+                    >
+                      <div className="pick-header">
+                        <div>
+                          <div className="pick-ticker">{stock.ticker}</div>
+                          <div className="early-watch-state">{getDisplaySummary(stock)}</div>
+                        </div>
+                        <div className="pick-score" style={{ color: scoreColor(getDisplayScore(stock)) }}>
+                          {getDisplayScore(stock).toFixed(0)}
+                        </div>
+                      </div>
+
+                      <div className="premarket-meta">
+                        <span className="premarket-mini-chip">{formatPct(stock.gapPercent)}</span>
+                        <span className="premarket-mini-chip">{formatVolume(stock.premarketVolume)} vol</span>
+                        <span className="premarket-mini-chip">{Number(stock.distanceToPremarketHighPct || 0).toFixed(2)}% from PM high</span>
+                        {(stock.triggerFlags || []).slice(0, 2).map((flag) => (
+                          <span key={`early-${stock.ticker}-${flag}`} className="premarket-mini-chip">
+                            {formatTriggerFlag(flag)}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="premarket-pick-copy">{stock.aiSummary}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="heatmap-panel" style={{ marginTop: "18px" }}>
               <div className="premarket-heatmap-header">
@@ -479,8 +602,8 @@ const PremarketIntelligencePage = () => {
                       <div className="premarket-heatmap-symbol">{stock.ticker}</div>
                       <div className="premarket-heatmap-metrics">
                         <div style={{ color: toneColor(stock.colorMetric) }}>{formatPct(stock.gapPercent)}</div>
-                        <div>Score {Number(stock.score || 0).toFixed(0)}</div>
-                        <div>{stock.catalystType}</div>
+                        <div>Detector {getDisplayScore(stock).toFixed(0)}</div>
+                        <div>{getDisplaySummary(stock)}</div>
                         <div>{formatVolume(stock.sizeMetric)} vol</div>
                       </div>
                     </button>
@@ -508,16 +631,26 @@ const PremarketIntelligencePage = () => {
                           {selectedStock.companyName || selectedStock.sector || "Premarket candidate"}
                         </div>
                       </div>
-                      <div className="premarket-score" style={{ color: scoreColor(selectedStock.score) }}>
-                        {Number(selectedStock.score || 0).toFixed(0)}
+                      <div className="premarket-score" style={{ color: scoreColor(selectedDisplayScore) }}>
+                        {selectedDisplayScore.toFixed(0)}
                       </div>
                     </div>
 
                     <div className="premarket-meta">
-                      <span className="premarket-mini-chip">{selectedStock.conviction || "watch"}</span>
+                      <span className="premarket-mini-chip">{selectedDisplaySummary}</span>
                       <span className="premarket-mini-chip">{formatPct(selectedStock.gapPercent)}</span>
                       <span className="premarket-mini-chip">{formatVolume(selectedStock.premarketVolume)} vol</span>
-                      <span className="premarket-mini-chip">{selectedStock.setupType?.replace(/_/g, " ")}</span>
+                      <span className="premarket-mini-chip">
+                        Detector {selectedDisplayScore.toFixed(0)}
+                      </span>
+                    </div>
+
+                    <div className="premarket-meta">
+                      {(selectedStock.triggerFlags || []).slice(0, 3).map((flag) => (
+                        <span key={`detail-${selectedStock.ticker}-${flag}`} className="premarket-mini-chip">
+                          {formatTriggerFlag(flag)}
+                        </span>
+                      ))}
                     </div>
 
                     <div className="premarket-detail-copy">{selectedStock.aiSummary || detail?.aiAnalysis?.summary}</div>

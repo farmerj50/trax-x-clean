@@ -248,7 +248,9 @@ const OptionsPage = () => {
       setConnectionState("connecting");
       setLastChecked("");
       setChain([]);
-      const data = await apiFetch(`/api/options-strategies?ticker=${ticker}&underlying=${underlying || ""}`);
+      const data = await apiFetch(`/api/options-strategies?ticker=${ticker}&underlying=${underlying || ""}`, {
+        timeoutMs: 25000,
+      });
       const uiSpot = Number(underlying || 0);
       const apiSpot = Number(data?.underlying || 0);
       const spot = uiSpot > 0 ? uiSpot : apiSpot;

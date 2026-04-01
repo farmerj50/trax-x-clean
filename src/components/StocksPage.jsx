@@ -7,13 +7,12 @@ import "./StocksPage.css";
 import { apiFetch } from "../apiClient";
 
 import {
-  StockChartComponent,
-  StockChartSeriesCollectionDirective,
-  StockChartSeriesDirective,
+  ChartComponent,
+  SeriesCollectionDirective,
+  SeriesDirective,
   Inject,
   DateTime,
   Tooltip,
-  RangeTooltip,
   Crosshair,
   LineSeries,
   CandleSeries,
@@ -311,14 +310,6 @@ const StocksPage = ({ theme = "dark" }) => {
   const reconnectTimeoutRef = useRef(null);
   const isMountedRef = useRef(false);
   const selectedTickerRef = useRef(selectedTicker);
-
-  const periods = [
-    { intervalType: "Months", interval: 1, text: "1M" },
-    { intervalType: "Months", interval: 3, text: "3M" },
-    { intervalType: "Months", interval: 6, text: "6M" },
-    { intervalType: "Years", interval: 1, text: "YTD" },
-    { intervalType: "Years", interval: 3, text: "All" },
-  ];
 
   useEffect(() => {
     console.log(BUILD_MARKER);
@@ -753,7 +744,7 @@ const StocksPage = ({ theme = "dark" }) => {
 
           <div className="stock-chart-card__body">
             {safeChartData.length > 1 ? (
-              <StockChartComponent
+              <ChartComponent
                 id="stockchart"
                 height="520px"
                 width="100%"
@@ -779,15 +770,15 @@ const StocksPage = ({ theme = "dark" }) => {
                 }}
                 tooltip={{ enable: true }}
                 crosshair={{ enable: true }}
-                periods={periods}
                 key={`${selectedTicker}-${safeChartData.length}`}
+                legendSettings={{ visible: true }}
               >
                 <Inject services={[
-                  DateTime, Tooltip, RangeTooltip, Crosshair, LineSeries, CandleSeries,
+                  DateTime, Tooltip, Crosshair, LineSeries, CandleSeries,
                   Legend, Export, RsiIndicator, MacdIndicator, ScatterSeries
                 ]} />
-                <StockChartSeriesCollectionDirective>
-                  <StockChartSeriesDirective
+                <SeriesCollectionDirective>
+                  <SeriesDirective
                     dataSource={safeChartData}
                     xName="x"
                     open="open"
@@ -800,7 +791,7 @@ const StocksPage = ({ theme = "dark" }) => {
                     animation={{ enable: true }}
                   />
                   {entryPoint !== null && (
-                    <StockChartSeriesDirective
+                    <SeriesDirective
                       dataSource={[{ x: safeChartData[0]?.x || new Date(), y: entryPoint }]}
                       xName="x"
                       yName="y"
@@ -810,7 +801,7 @@ const StocksPage = ({ theme = "dark" }) => {
                     />
                   )}
                   {exitPoint !== null && (
-                    <StockChartSeriesDirective
+                    <SeriesDirective
                       dataSource={[{ x: safeChartData[safeChartData.length - 1]?.x || new Date(), y: exitPoint }]}
                       xName="x"
                       yName="y"
@@ -820,7 +811,7 @@ const StocksPage = ({ theme = "dark" }) => {
                     />
                   )}
                   {stopLoss !== null && (
-                    <StockChartSeriesDirective
+                    <SeriesDirective
                       dataSource={[{ x: safeChartData[safeChartData.length - 1]?.x || new Date(), y: stopLoss }]}
                       xName="x"
                       yName="y"
@@ -829,8 +820,8 @@ const StocksPage = ({ theme = "dark" }) => {
                       name="Stop"
                     />
                   )}
-                </StockChartSeriesCollectionDirective>
-              </StockChartComponent>
+                </SeriesCollectionDirective>
+              </ChartComponent>
             ) : (
               <div
                 className="stock-chart-card__empty"

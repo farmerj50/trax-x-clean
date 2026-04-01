@@ -2,6 +2,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
 import os
+import sys
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import numpy as np
 import json
@@ -61,8 +63,17 @@ from utils.ai_picks import alert_priority, calculate_ai_pick_score
 from utils.signal_engine import SignalEngine
 from utils.market_stream import PolygonMarketStream
 from utils.options_flow import IntrinioOptionsFlowPoller
+from utils.options_data import fetch_option_chain_for_ticker
 import logging
 import config
+
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+except Exception:
+    pass
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
@@ -103,7 +114,7 @@ lstm_cache = {"model": None, "scaler": None}
 
 # ✅ Load LSTM model at startup
 if lstm_cache["model"] is None or lstm_cache["scaler"] is None:
-    print("✅ Checking for saved LSTM model...")
+    print("Checking for saved LSTM model...")
 
     model, scaler = load_lstm_model()
     if isinstance(model, tuple):
@@ -115,9 +126,9 @@ if lstm_cache["model"] is None or lstm_cache["scaler"] is None:
 
     if model is not None and scaler is not None:
        lstm_cache["model"], lstm_cache["scaler"] = model, scaler
-       print("✅ Loaded saved LSTM model successfully.")
+       print("Loaded saved LSTM model successfully.")
     else:
-       print("⚠️ LSTM model or scaler missing! Retraining now...")
+       print("LSTM model or scaler missing. Retraining now...")
        lstm_cache["model"], lstm_cache["scaler"] = train_and_cache_lstm_model()
 
 # Fix 'NoneType' object error in logging
@@ -165,19 +176,19 @@ def check_and_train_models():
 
     # ✅ CHECK & TRAIN LSTM
     if lstm_cache.get("model") is None or lstm_cache.get("scaler") is None:
-        print("✅ Checking for saved LSTM model...")
+        print("Checking for saved LSTM model...")
 
         model, scaler = load_lstm_model()
 
         if model is not None and scaler is not None:
          lstm_cache["model"], lstm_cache["scaler"] = model, scaler
-         print("✅ Loaded saved LSTM model successfully.")
+         print("Loaded saved LSTM model successfully.")
         else:
-          print("⚠️ LSTM model or scaler missing! Retraining now...")
+          print("LSTM model or scaler missing. Retraining now...")
           lstm_cache["model"], lstm_cache["scaler"] = train_and_cache_lstm_model()
 
 
-    print("✅ Model check complete. Both XGBoost & LSTM are ready.")
+    print("Model check complete. Both XGBoost and LSTM are ready.")
 def classify_sentiment(score):
     """
     Convert a VADER compound sentiment score into a label.
@@ -233,7 +244,7 @@ def on_error(ws, error):
     print(f"❌ WebSocket Error: {error}")
 
 def on_close(ws, close_status_code, close_msg):
-    print("🔌 WebSocket closed, reconnecting in 5 seconds...")
+    print("WebSocket closed, reconnecting in 5 seconds...")
     threading.Timer(5, ensure_websocket_thread_running).start()
 
 def on_open(ws):
@@ -1887,10 +1898,6 @@ def find_anomalies():
 def options_strategies():
     ticker = request.args.get("ticker", "AAPL").upper()
     underlying = float(request.args.get("underlying", 180))
-    multiplier = request.args.get("multiplier", "1")
-    timespan = request.args.get("timespan", "day")
-    from_dt = request.args.get("from", (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d"))
-    to_dt = request.args.get("to", datetime.utcnow().strftime("%Y-%m-%d"))
     limit = min(int(request.args.get("limit", 25)), 50)
 
     fallback_strategies = [
@@ -1925,62 +1932,40 @@ def options_strategies():
     ]
 
     try:
-        base_url = (
-            f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_dt}/{to_dt}"
-        )
-        params = {
-            "apiKey": POLYGON_API_KEY,
-            "adjusted": "true",
-            "sort": "desc",
-            "limit": limit,
-        }
-        logging.info("Fetching options Custom Bars: %s %s", base_url, params)
-        response = requests.get(base_url, params=params, timeout=20)
-        response.raise_for_status()
-        data = response.json()
-
-        results = data.get("results", [])
-        if not results:
-            logging.warning("No aggregate bars returned; falling back to sample strategies.")
+        rows = fetch_option_chain_for_ticker(ticker, limit=max(limit * 5, 60), max_pages=2)
+        if not rows:
+            logging.warning("No option chain rows returned for %s; falling back to sample strategies.", ticker)
             return jsonify({"strategies": fallback_strategies, "underlying": underlying}), 200
 
-        strategies = []
-        for bar in results[:limit]:
-            strike = bar.get("strike_price") or underlying
-            expiry = bar.get("expiration_date") or bar.get("t")
-            open_price = bar.get("o", 0)
-            close_price = bar.get("c", 0)
-            high_price = bar.get("h", 0)
-            low_price = bar.get("l", 0)
-            average = (
-                (open_price + close_price + high_price + low_price) / 4.0
-                if any([open_price, close_price, high_price, low_price])
-                else underlying
-            )
-            premium = bar.get("vw", 0) or bar.get("v", 0) or 0
-            breakeven = strike + premium
-            strategies.append(
-                {
-                    "ticker": ticker,
-                    "type": bar.get("type", "option"),
-                    "strike": strike,
-                    "expiry": expiry,
-                    "premium": round(premium, 2),
-                    "avg_price": round(average, 2),
-                    "breakeven": round(breakeven, 2),
-                    "volume": bar.get("v", 0),
-                    "timestamp": bar.get("t"),
-                    "description": f"Custom bar ({multiplier}x {timespan})",
-                }
-            )
+        def _row_sort_key(row):
+            open_interest = float(row.get("open_interest") or row.get("oi") or 0)
+            volume = float(row.get("volume") or 0)
+            bid = float(row.get("bid") or 0)
+            ask = float(row.get("ask") or 0)
+            return (open_interest + (volume * 2.0), bid + ask)
+
+        strategies = [
+            {
+                "ticker": ticker,
+                "option_ticker": row.get("option_ticker") or "",
+                "type": row.get("type", "call"),
+                "strike": round(float(row.get("strike") or 0), 2),
+                "expiry": row.get("expiry"),
+                "bid": round(float(row.get("bid") or 0), 2),
+                "ask": round(float(row.get("ask") or 0), 2),
+                "delta": round(float(row.get("delta") or 0), 4),
+                "iv": round(float(row.get("implied_volatility") or row.get("iv") or 0), 4),
+                "oi": int(float(row.get("open_interest") or row.get("oi") or 0)),
+                "volume": int(float(row.get("volume") or 0)),
+                "source": row.get("source") or "unknown",
+            }
+            for row in sorted(rows, key=_row_sort_key, reverse=True)[:limit]
+        ]
 
         return jsonify({"strategies": strategies, "underlying": underlying}), 200
-    except requests.exceptions.RequestException as req_err:
-        logging.error(f"❌ Polygon request failed: {req_err}", exc_info=True)
+    except Exception as req_err:
+        logging.error(f"❌ Option chain request failed: {req_err}", exc_info=True)
         return jsonify({"strategies": fallback_strategies, "underlying": underlying}), 200
-    except Exception as e:
-        logging.error(f"❌ Error in /api/options-strategies: {e}", exc_info=True)
-        return jsonify({"strategies": fallback_strategies, "underlying": underlying, "error": str(e)}), 500
 
 
 # Simple stub: Crypto signals (placeholder until live scoring is added)
@@ -2183,6 +2168,7 @@ _intraday_metrics_cache = {}
 _intraday_metrics_cache_lock = threading.Lock()
 _daily_cache = {}
 _daily_cache_lock = threading.Lock()
+_scan_route_cache = TTLCache(maxsize=64, ttl=45)
 
 
 def _safe_float(value, default=0.0):
@@ -2200,6 +2186,136 @@ def _clamp(value, lo=0.0, hi=100.0):
 
 def _clip_unit(value):
     return max(0.0, min(1.0, value))
+
+
+def _first_positive(*values, default=0.0):
+    for value in values:
+        parsed = _safe_float(value, 0.0)
+        if parsed > 0:
+            return parsed
+    return default
+
+
+def _build_request_cache_key(route_name):
+    return route_name, tuple(sorted((str(key), str(value)) for key, value in request.args.items()))
+
+
+def _parse_snapshot_candidate(row):
+    minute = row.get("min") or {}
+    day = row.get("day") or {}
+    prev_day = row.get("prevDay") or {}
+    last_trade = row.get("lastTrade") or {}
+    symbol = str(row.get("ticker") or "").upper().strip()
+    if not symbol:
+        return None
+
+    prev_close = _first_positive(prev_day.get("c"), day.get("o"), default=0.0)
+    price = _first_positive(
+        minute.get("c"),
+        minute.get("vw"),
+        minute.get("o"),
+        minute.get("h"),
+        minute.get("l"),
+        day.get("c"),
+        last_trade.get("p"),
+        prev_close,
+        default=0.0,
+    )
+    if price <= 0:
+        return None
+
+    minute_volume = _first_positive(minute.get("av"), minute.get("v"), minute.get("dv"), default=0.0)
+    day_volume = _first_positive(day.get("v"), default=0.0)
+    prev_volume = _first_positive(prev_day.get("v"), default=0.0)
+
+    if minute_volume > 0:
+        volume = minute_volume
+        used_prev_volume = False
+    elif day_volume > 0:
+        volume = day_volume
+        used_prev_volume = False
+    else:
+        volume = prev_volume
+        used_prev_volume = prev_volume > 0
+
+    vwap = _first_positive(minute.get("vw"), day.get("vw"), price, default=price)
+    pct_change = _safe_float(row.get("todaysChangePerc"), 0.0)
+    if pct_change == 0.0 and price > 0 and prev_close > 0:
+        pct_change = ((price - prev_close) / prev_close) * 100.0
+
+    rvol = 1.0 if used_prev_volume and prev_volume > 0 else (volume / prev_volume) if prev_volume > 0 else 0.0
+    vwap_distance_pct = abs((price - vwap) / vwap) * 100.0 if vwap > 0 else 0.0
+
+    return {
+        "symbol": symbol,
+        "price": price,
+        "vwap": vwap,
+        "day_volume": volume,
+        "day_notional": volume * vwap,
+        "pct_change": pct_change,
+        "rvol": rvol,
+        "vwap_distance_pct": vwap_distance_pct,
+    }
+
+
+def _snapshot_seed_score(item):
+    day_notional = _safe_float(item.get("day_notional"), 0.0)
+    pct_change = abs(_safe_float(item.get("pct_change"), 0.0))
+    rvol = _safe_float(item.get("rvol"), 0.0)
+    price = _safe_float(item.get("price"), 0.0)
+    liquidity_component = min(day_notional / 500_000_000.0, 6.0) * 10.0
+    move_component = min(pct_change, 25.0) * 2.0
+    rvol_component = min(rvol, 6.0) * 12.0
+    price_component = 6.0 if 1.0 <= price <= 25.0 else 2.0 if price > 0 else 0.0
+    return liquidity_component + move_component + rvol_component + price_component
+
+
+def _select_snapshot_seeds(
+    rows,
+    *,
+    limit,
+    min_price=0.0,
+    max_price=float("inf"),
+    min_day_notional=0.0,
+    min_day_volume=0.0,
+):
+    candidates = []
+    for row in rows:
+        parsed = _parse_snapshot_candidate(row)
+        if not parsed:
+            continue
+        if parsed["price"] < min_price:
+            continue
+        if math.isfinite(max_price) and parsed["price"] > max_price:
+            continue
+        if parsed["day_notional"] < min_day_notional:
+            continue
+        if parsed["day_volume"] < min_day_volume:
+            continue
+        parsed["_seedScore"] = round(_snapshot_seed_score(parsed), 4)
+        candidates.append(parsed)
+
+    candidates.sort(
+        key=lambda item: (
+            _safe_float(item.get("_seedScore")),
+            _safe_float(item.get("day_notional")),
+            abs(_safe_float(item.get("pct_change"))),
+            _safe_float(item.get("rvol")),
+        ),
+        reverse=True,
+    )
+    return candidates[:limit]
+
+
+def _fetch_polygon_snapshot_rows():
+    snapshot_url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
+    try:
+        response = requests.get(snapshot_url, params={"apiKey": POLYGON_API_KEY}, timeout=20)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError(f"Polygon snapshot request failed: {exc}") from exc
+    return payload.get("tickers", []) or []
 
 
 def _compute_pressure_summary(daily, price, spy_daily=None):
@@ -2895,107 +3011,50 @@ def _big_print_stats_by_symbol(window_minutes=30, min_print_notional=10_000_000)
 @app.route("/api/ai-picks", methods=["GET"])
 def ai_picks():
     try:
+        cache_key = _build_request_cache_key("ai_picks")
+        cached_payload = _scan_route_cache.get(cache_key)
+        if cached_payload is not None:
+            return jsonify(cached_payload), 200
+
         try:
             limit = max(1, min(int(request.args.get("limit", 8)), 20))
         except (TypeError, ValueError):
             limit = 8
         try:
-            pool_limit = max(40, min(int(request.args.get("pool_limit", 120)), 250))
+            pool_limit = max(max(limit * 3, 18), min(int(request.args.get("pool_limit", 48)), 96))
         except (TypeError, ValueError):
-            pool_limit = 120
+            pool_limit = max(limit * 3, 48)
 
         min_day_notional = _safe_float(request.args.get("min_day_notional", 800_000_000), 800_000_000)
         min_price = _safe_float(request.args.get("min_price", 5.0), 5.0)
-        news_limit = max(5, min(int(_safe_float(request.args.get("news_limit", 15), 15)), 25))
+        news_limit = max(limit, min(int(_safe_float(request.args.get("news_limit", 8), 8)), 12))
         alert_config = {
             "live_min_score": _safe_float(request.args.get("live_min_score", 85.0), 85.0),
             "near_min_score": _safe_float(request.args.get("near_min_score", 75.0), 75.0),
             "near_distance_pct": _safe_float(request.args.get("near_distance_pct", 1.0), 1.0),
         }
 
-        snapshot_url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
-        response = requests.get(snapshot_url, params={"apiKey": POLYGON_API_KEY}, timeout=20)
-        response.raise_for_status()
-        payload = response.json()
-        rows = payload.get("tickers", [])
-
-        enriched = []
-        for row in rows:
-            day = row.get("day") or {}
-            prev_day = row.get("prevDay") or {}
-            symbol = str(row.get("ticker") or "").upper()
-            price = _safe_float(day.get("c"), 0.0) or _safe_float((row.get("lastTrade") or {}).get("p"), 0.0)
-            if price <= 0:
-                price = _safe_float(prev_day.get("c"), 0.0)
-            vwap = _safe_float(day.get("vw"), 0.0) or price
-            volume = _safe_float(day.get("v"), 0.0)
-            prev_volume = _safe_float(prev_day.get("v"), 0.0)
-            if volume <= 0:
-                volume = prev_volume
-            if not symbol or price < min_price or volume <= 0 or vwap <= 0:
-                continue
-            day_notional = volume * vwap
-            if day_notional < min_day_notional:
-                continue
-            rvol = (volume / prev_volume) if prev_volume > 0 else 0.0
-            enriched.append(
-                {
-                    "symbol": symbol,
-                    "price": price,
-                    "vwap": vwap,
-                    "day_volume": volume,
-                    "day_notional": day_notional,
-                    "pct_change": _safe_float(row.get("todaysChangePerc"), 0.0),
-                    "rvol": rvol,
-                }
-            )
+        rows = _fetch_polygon_snapshot_rows()
 
         fallback_used = False
-        if not enriched:
+        candidate_rows = _select_snapshot_seeds(
+            rows,
+            limit=pool_limit,
+            min_price=min_price,
+            min_day_notional=min_day_notional,
+        )
+        if not candidate_rows:
             fallback_used = True
-            for row in rows:
-                day = row.get("day") or {}
-                prev_day = row.get("prevDay") or {}
-                symbol = str(row.get("ticker") or "").upper()
-                price = _safe_float(day.get("c"), 0.0) or _safe_float((row.get("lastTrade") or {}).get("p"), 0.0)
-                if price <= 0:
-                    price = _safe_float(prev_day.get("c"), 0.0)
-                vwap = _safe_float(day.get("vw"), 0.0) or price
-                volume = _safe_float(day.get("v"), 0.0) or _safe_float(prev_day.get("v"), 0.0)
-                if not symbol or price < min_price or volume <= 0 or vwap <= 0:
-                    continue
-                prev_volume = _safe_float(prev_day.get("v"), 0.0)
-                enriched.append(
-                    {
-                        "symbol": symbol,
-                        "price": price,
-                        "vwap": vwap,
-                        "day_volume": volume,
-                        "day_notional": volume * vwap,
-                        "pct_change": _safe_float(row.get("todaysChangePerc"), 0.0),
-                        "rvol": (volume / prev_volume) if prev_volume > 0 else 0.0,
-                    }
-                )
-        if not enriched:
+            candidate_rows = _select_snapshot_seeds(
+                rows,
+                limit=max(limit * 2, 12),
+                min_price=min_price,
+            )
+        if not candidate_rows:
             return jsonify({"generated_at": datetime.utcnow().isoformat() + "Z", "picks": []}), 200
 
-        enriched.sort(key=lambda item: item["day_notional"], reverse=True)
-        high_notional = enriched[: max(1, pool_limit // 2)]
-        low_price = sorted(enriched, key=lambda item: item["price"])[: max(1, pool_limit // 2)]
-        candidate_rows = []
-        seen_symbols = set()
-        for item in high_notional + low_price:
-            symbol = item["symbol"]
-            if symbol in seen_symbols:
-                continue
-            candidate_rows.append(item)
-            seen_symbols.add(symbol)
-            if len(candidate_rows) >= pool_limit:
-                break
-
         flow_stats = _big_print_stats_by_symbol(window_minutes=30, min_print_notional=10_000_000)
-        preliminary = []
-        for item in candidate_rows:
+        def build_preliminary_entry(item):
             daily_metrics = _fetch_daily_metrics(item["symbol"])
             intra_metrics = _fetch_intraday_1m_metrics(item["symbol"], item["price"], minutes=30)
             scored = calculate_ai_pick_score(
@@ -3007,25 +3066,25 @@ def ai_picks():
                 analyzer=analyzer,
                 alert_config=alert_config,
             )
-            preliminary.append(
-                {
-                    "item": item,
-                    "daily": daily_metrics,
-                    "intra": intra_metrics,
-                    "score": scored["score"],
-                }
-            )
+            return {
+                "item": item,
+                "daily": daily_metrics,
+                "intra": intra_metrics,
+                "score": scored["score"],
+            }
+
+        with ThreadPoolExecutor(max_workers=min(12, max(4, len(candidate_rows)))) as executor:
+            preliminary = list(executor.map(build_preliminary_entry, candidate_rows))
 
         if not preliminary:
             return jsonify({"generated_at": datetime.utcnow().isoformat() + "Z", "picks": []}), 200
 
         preliminary.sort(key=lambda entry: entry["score"], reverse=True)
         finalists = preliminary[:news_limit]
-        picks = []
-        for entry in finalists:
+        def build_pick(entry):
             symbol = entry["item"]["symbol"]
             news_items = fetch_ticker_news(symbol, limit=3)
-            scored = calculate_ai_pick_score(
+            return calculate_ai_pick_score(
                 entry["item"],
                 entry["daily"],
                 entry["intra"],
@@ -3034,7 +3093,9 @@ def ai_picks():
                 analyzer=analyzer,
                 alert_config=alert_config,
             )
-            picks.append(scored)
+
+        with ThreadPoolExecutor(max_workers=min(8, max(2, len(finalists)))) as executor:
+            picks = list(executor.map(build_pick, finalists))
 
         picks.sort(
             key=lambda item: (
@@ -3043,26 +3104,33 @@ def ai_picks():
             ),
             reverse=True,
         )
-        return jsonify(
-            {
-                "generated_at": datetime.utcnow().isoformat() + "Z",
-                "picks": picks[:limit],
-                "debug": {
-                    "universe_count": len(rows),
-                    "candidate_count": len(candidate_rows),
-                    "scored_count": len(preliminary),
-                    "fallback_used": fallback_used,
-                    "alert_config": alert_config,
-                },
-            }
-        ), 200
-    except Exception as e:
+        response_payload = {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "picks": picks[:limit],
+            "debug": {
+                "universe_count": len(rows),
+                "candidate_count": len(candidate_rows),
+                "scored_count": len(preliminary),
+                "fallback_used": fallback_used,
+                "alert_config": alert_config,
+            },
+        }
+        _scan_route_cache[cache_key] = response_payload
+        return jsonify(response_payload), 200
+    except RuntimeError as e:
+        logging.error(f"AI picks route failed: {e}", exc_info=True)
+        return jsonify({"generated_at": datetime.utcnow().isoformat() + "Z", "picks": [], "error": str(e)}), 503
         logging.error(f"AI picks route failed: {e}", exc_info=True)
         return jsonify({"generated_at": datetime.utcnow().isoformat() + "Z", "picks": [], "error": str(e)}), 500
 
 
 @app.route("/api/market-signals/qualified-targets", methods=["GET"])
 def market_signals_qualified_targets():
+    cache_key = _build_request_cache_key("market_signals_qualified_targets")
+    cached_payload = _scan_route_cache.get(cache_key)
+    if cached_payload is not None:
+        return jsonify(cached_payload), 200
+
     mode = str(request.args.get("mode", "breakout")).strip().lower()
     if mode not in {"breakout", "reversal", "big_prints", "pre_breakout"}:
         mode = "breakout"
@@ -3096,79 +3164,40 @@ def market_signals_qualified_targets():
     print_window_minutes = int(_safe_float(request.args.get("print_window_minutes", 30), 30))
     min_print_count = int(_safe_float(request.args.get("min_print_count", 2), 2))
     single_print_override = _safe_float(request.args.get("single_print_override", 25_000_000), 25_000_000)
-    pool_limit = int(_safe_float(request.args.get("pool_limit", 400), 400))
-    pool_limit = max(100, min(pool_limit, 800))
+    pool_limit = int(_safe_float(request.args.get("pool_limit", max(limit * 3, 60)), max(limit * 3, 60)))
+    pool_limit = max(max(limit * 2, 24), min(pool_limit, 120))
 
-    snapshot_url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
-    response = requests.get(snapshot_url, params={"apiKey": POLYGON_API_KEY}, timeout=20)
-    response.raise_for_status()
-    payload = response.json()
-    rows = payload.get("tickers", [])
-
-    enriched = []
-    for row in rows:
-        day = row.get("day") or {}
-        prev_day = row.get("prevDay") or {}
-        symbol = str(row.get("ticker") or "").upper()
-        price = _safe_float(day.get("c"), 0.0) or _safe_float((row.get("lastTrade") or {}).get("p"), 0.0)
-        vwap = _safe_float(day.get("vw"), 0.0)
-        day_volume = _safe_float(day.get("v"), 0.0)
-        volume = day_volume
-        prev_volume = _safe_float(prev_day.get("v"), 0.0)
-        used_prev_volume = False
-        if volume <= 0:
-            volume = prev_volume
-            used_prev_volume = True
-        if price <= 0:
-            price = _safe_float(prev_day.get("c"), 0.0)
-        if vwap <= 0 and price > 0:
-            vwap = price
-        if not symbol or price <= 0 or vwap <= 0 or volume <= 0:
-            continue
-        day_notional = volume * vwap
-        pct_change = _safe_float(row.get("todaysChangePerc"), 0.0)
-        if used_prev_volume and prev_volume > 0:
-            rvol = 1.0
-        else:
-            rvol = (volume / prev_volume) if prev_volume > 0 else 0.0
-        vwap_distance_pct = abs((price - vwap) / vwap) * 100.0 if vwap > 0 else 0.0
-        enriched.append(
+    try:
+        rows = _fetch_polygon_snapshot_rows()
+    except RuntimeError as exc:
+        logging.error(f"Qualified targets route failed: {exc}", exc_info=True)
+        return jsonify(
             {
-                "symbol": symbol,
-                "price": price,
-                "vwap": vwap,
-                "day_notional": day_notional,
-                "day_volume": volume,
-                "pct_change": pct_change,
-                "rvol": rvol,
-                "vwap_distance_pct": vwap_distance_pct,
+                "mode": mode,
+                "count": 0,
+                "evaluated": 0,
+                "targets": [],
+                "error": str(exc),
+                "debug": {"failure_counts": []},
             }
-        )
+        ), 503
 
-    # Blend high-notional and lower-priced names so we don't only surface mega-caps.
-    enriched.sort(key=lambda x: x["day_notional"], reverse=True)
-    top_notional = enriched[: max(1, pool_limit // 2)]
-    low_price_sorted = sorted(enriched, key=lambda x: x["price"])
-    top_low_price = []
-    seen = set()
-    for row in low_price_sorted:
-        sym = row["symbol"]
-        if sym in seen:
-            continue
-        top_low_price.append(row)
-        seen.add(sym)
-        if len(top_low_price) >= max(1, pool_limit // 2):
-            break
-    merged = []
-    seen = set()
-    for row in top_notional + top_low_price:
-        if row["symbol"] in seen:
-            continue
-        merged.append(row)
-        seen.add(row["symbol"])
-        if len(merged) >= pool_limit:
-            break
-    candidate_rows = merged
+    seed_min_notional = min_day_notional * 0.25 if min_day_notional > 0 else 0.0
+    candidate_rows = _select_snapshot_seeds(
+        rows,
+        limit=pool_limit,
+        min_price=min_price,
+        max_price=max_price,
+        min_day_notional=seed_min_notional,
+        min_day_volume=min_day_volume * 0.25 if min_day_volume > 0 else 0.0,
+    )
+    if not candidate_rows:
+        candidate_rows = _select_snapshot_seeds(
+            rows,
+            limit=max(limit * 2, 16),
+            min_price=min_price,
+            max_price=max_price,
+        )
     print_stats = _big_print_stats_by_symbol(window_minutes=print_window_minutes, min_print_notional=min_print_notional)
 
     results = []
@@ -3179,8 +3208,9 @@ def market_signals_qualified_targets():
     def tally_failures(failed_rules):
         for label in failed_rules:
             failure_counts[label] = failure_counts.get(label, 0) + 1
-    for item in candidate_rows:
-        evaluated_count += 1
+
+    def evaluate_candidate(item):
+        item = dict(item)
         symbol = item["symbol"]
         intra_for_engines = _fetch_intraday_1m_metrics(symbol=symbol, price=item["price"], minutes=30)
         stats_for_engines = print_stats.get(
@@ -3209,7 +3239,7 @@ def market_signals_qualified_targets():
             c4 = check_rule(item["rvol"] >= min_rvol, f"RVOL >= {min_rvol:g}")
             c5 = check_rule((item["price"] > item["vwap"]) if require_vwap else True, "Above VWAP")
             near_breakout = False
-            high_20d = _fetch_20d_high(symbol) if (c1 and c2 and c2b and c2c and c3 and c4) else 0.0
+            high_20d = _safe_float(daily_metrics.get("high_20"), 0.0) if (c1 and c2 and c2b and c2c and c3 and c4) else 0.0
             if high_20d > 0:
                 near_breakout = item["price"] >= high_20d * 0.98
                 c6 = check_rule(near_breakout, "Within 2% of 20d high")
@@ -3328,23 +3358,35 @@ def market_signals_qualified_targets():
             "idealEntryType": ideal_entry,
             "tooLate": too_late,
         }
-        tally_failures(failed)
-        if (not show_qualified_only) or qualified:
-            results.append(row_out)
+
+        return {
+            "row": row_out,
+            "failed": failed,
+            "include": (not show_qualified_only) or qualified,
+        }
+
+    with ThreadPoolExecutor(max_workers=min(12, max(4, len(candidate_rows)))) as executor:
+        evaluated = list(executor.map(evaluate_candidate, candidate_rows))
+
+    evaluated_count = len(evaluated)
+    for entry in evaluated:
+        tally_failures(entry["failed"])
+        if entry["include"]:
+            results.append(entry["row"])
 
     results.sort(key=lambda x: x["score"], reverse=True)
     top_failures = sorted(failure_counts.items(), key=lambda kv: kv[1], reverse=True)[:6]
-    return jsonify(
-        {
-            "mode": mode,
-            "count": len(results),
-            "evaluated": evaluated_count,
-            "targets": results[:limit],
-            "debug": {
-                "failure_counts": [{"rule": rule, "count": count} for rule, count in top_failures],
-            },
-        }
-    ), 200
+    response_payload = {
+        "mode": mode,
+        "count": len(results),
+        "evaluated": evaluated_count,
+        "targets": results[:limit],
+        "debug": {
+            "failure_counts": [{"rule": rule, "count": count} for rule, count in top_failures],
+        },
+    }
+    _scan_route_cache[cache_key] = response_payload
+    return jsonify(response_payload), 200
 
 
 options_flow_poller = None

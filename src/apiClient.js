@@ -27,6 +27,28 @@ const toWebSocketBase = (value) => {
   return value.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:");
 };
 
+const isLocalHostname = (hostname) => {
+  const normalized = String(hostname || "").toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
+};
+
+const normalizeLocalDevOverride = (value, fallback) => {
+  if (!value || typeof window === "undefined" || !isLocalHostname(window.location.hostname)) {
+    return value;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (isLocalHostname(parsed.hostname) && parsed.port !== "5000") {
+      return fallback;
+    }
+  } catch (error) {
+    return value;
+  }
+
+  return value;
+};
+
 const getKnownProductionApiBase = () => {
   if (typeof window === "undefined") return "";
 
@@ -39,15 +61,18 @@ const getKnownProductionApiBase = () => {
 };
 
 const defaultApiBase = (() => {
-  const configured =
-    normalizeBaseUrl(process.env.REACT_APP_API_BASE) || getRuntimeConfigBase("API_BASE");
+  const configured = normalizeLocalDevOverride(
+    normalizeBaseUrl(process.env.REACT_APP_API_BASE) || getRuntimeConfigBase("API_BASE"),
+    "http://localhost:5000"
+  );
   if (configured) return configured;
   const knownProductionBase = getKnownProductionApiBase();
   if (knownProductionBase) return knownProductionBase;
   if (typeof window === "undefined") return "http://localhost:5000";
 
-  // In CRA local dev, frontend runs at 3000 and backend at 5000.
-  if (window.location.hostname === "localhost" && window.location.port === "3000") {
+  // In local dev, the frontend may move to 3001/3002 if 3000 is occupied.
+  // Keep the API pinned to the backend on 5000 unless explicitly configured.
+  if (isLocalHostname(window.location.hostname) && window.location.port !== "5000") {
     return "http://localhost:5000";
   }
 
@@ -55,12 +80,17 @@ const defaultApiBase = (() => {
 })();
 
 const defaultSocketBase = (() => {
-  const configured =
-    normalizeBaseUrl(process.env.REACT_APP_SOCKET_BASE) || getRuntimeConfigBase("SOCKET_BASE");
+  const configured = normalizeLocalDevOverride(
+    normalizeBaseUrl(process.env.REACT_APP_SOCKET_BASE) || getRuntimeConfigBase("SOCKET_BASE"),
+    "ws://localhost:5000"
+  );
   if (configured) return configured;
   const knownProductionBase = getKnownProductionApiBase();
   if (knownProductionBase) return knownProductionBase;
   if (typeof window === "undefined") return "ws://localhost:5000";
+  if (isLocalHostname(window.location.hostname) && window.location.port !== "5000") {
+    return "ws://localhost:5000";
+  }
   return toWebSocketBase(defaultApiBase || window.location.origin);
 })();
 
@@ -72,8 +102,45 @@ const buildApiUrl = (path) => {
   return `${API_BASE}${path}`;
 };
 
+const mergeAbortSignals = (signals = []) => {
+  const validSignals = signals.filter(Boolean);
+  if (validSignals.length === 0) return undefined;
+  if (validSignals.length === 1) return validSignals[0];
+
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+
+  validSignals.forEach((signal) => {
+    if (signal.aborted) {
+      abort();
+    } else {
+      signal.addEventListener("abort", abort, { once: true });
+    }
+  });
+
+  return controller.signal;
+};
+
 const apiFetch = async (path, options = {}) => {
-  const response = await fetch(buildApiUrl(path), options);
+  const { timeoutMs = 15000, signal, ...fetchOptions } = options;
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(buildApiUrl(path), {
+      ...fetchOptions,
+      signal: mergeAbortSignals([signal, timeoutController.signal]),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs}ms for ${path}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
   const text = await response.text();
   const contentType = response.headers.get("content-type") || "";
   const trimmed = text.trim();
