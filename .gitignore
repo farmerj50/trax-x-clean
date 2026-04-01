@@ -55,6 +55,10 @@ backend/.venv/
 *.keras
 *.pkl
 *.joblib
+!backend/models/
+!backend/models/*.keras
+!backend/models/*.pkl
+!backend/models/*.joblib
 
 # Local generated data
 lookup_table.json
