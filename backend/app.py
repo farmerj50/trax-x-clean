@@ -2081,6 +2081,12 @@ def start_market_signal_pipeline():
     if not config.ENABLE_MARKET_SIGNALS:
         logging.info("Market signal pipeline is disabled by ENABLE_MARKET_SIGNALS.")
         return
+    if not config.MARKET_SIGNALS_SUBSCRIBE:
+        logging.info(
+            "Market signal pipeline is disabled because MARKET_SIGNALS_SUBSCRIBE is empty. "
+            "Skipping idle Polygon websocket startup."
+        )
+        return
 
     with market_signal_lock:
         if market_signal_started:

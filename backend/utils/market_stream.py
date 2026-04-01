@@ -80,10 +80,11 @@ class PolygonMarketStream:
             ev = event.get("ev")
             if ev == "status":
                 status = str(event.get("status") or "").lower()
+                message = str(event.get("message") or "")
                 logger.info(
                     "Polygon market stream status: status=%s message=%s",
                     event.get("status"),
-                    event.get("message"),
+                    message,
                 )
                 if status == "auth_success" and not self._subscribed:
                     self._authenticated = True
@@ -94,6 +95,13 @@ class PolygonMarketStream:
                     else:
                         self._subscribed = True
                         logger.info("Polygon market stream auth succeeded with no subscribe params; stream is idle.")
+                elif status == "max_connections":
+                    self._disable_reconnect = True
+                    self._stop_event.set()
+                    logger.error(
+                        "Polygon market stream disabled after max_connections response. "
+                        "Close unused Polygon sessions or reduce concurrent websocket usage."
+                    )
                 elif status in {"auth_failed", "error"}:
                     logger.error("Polygon market stream rejected auth/subscribe: %s", event)
                     self._disable_reconnect = True
