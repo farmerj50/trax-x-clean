@@ -2,23 +2,25 @@ import React, { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { SOCKET_BASE } from "../apiClient";
 
-const socket = io(SOCKET_BASE);
-
 const LiveStockUpdates = ({ selectedTicker }) => {
   const [livePrice, setLivePrice] = useState(null);
 
   useEffect(() => {
-    if (!selectedTicker) return;
+    if (!selectedTicker) return undefined;
 
-    socket.on("stock_update", (data) => {
+    const socket = io(SOCKET_BASE);
+    const onStockUpdate = (data) => {
       if (data.ticker === selectedTicker) {
-        console.log(`📡 Live Update Received for ${selectedTicker}:`, data.price);
+        console.log(`Live Update Received for ${selectedTicker}:`, data.price);
         setLivePrice(data.price);
       }
-    });
+    };
+
+    socket.on("stock_update", onStockUpdate);
 
     return () => {
-      socket.off("stock_update");
+      socket.off("stock_update", onStockUpdate);
+      socket.close();
     };
   }, [selectedTicker]);
 
