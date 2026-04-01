@@ -141,7 +141,7 @@ app.logger.handlers = gunicorn_error_handlers.handlers
 app.logger.setLevel(logging.INFO)
 
 # ✅ Fix Gevent and Logging Conflict
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 tickers = set()
 # Ensure models/ directory exists
