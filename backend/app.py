@@ -1052,6 +1052,7 @@ def scan_stocks():
         volume_surge = float(request.args.get("volume_surge", 1.2))
         min_rsi = float(request.args.get("min_rsi", 0))
         max_rsi = float(request.args.get("max_rsi", 100))
+        include_news = str(request.args.get("include_news", "false")).strip().lower() in {"1", "true", "yes", "on"}
 
         logging.info(f"📌 Scan Params: min_price={min_price}, max_price={max_price}, volume_surge={volume_surge}, min_rsi={min_rsi}, max_rsi={max_rsi}")
 
@@ -1175,7 +1176,8 @@ def scan_stocks():
         )
 
         final_df = xgb_filtered_data.sort_values("rank_score", ascending=False)
-        final_df["news"] = final_df["T"].apply(fetch_ticker_news)
+        if include_news:
+            final_df["news"] = final_df["T"].apply(fetch_ticker_news)
 
         # ✅ Clean up for JSON serialization
         final_df = final_df.replace([np.inf, -np.inf], np.nan).fillna(0)

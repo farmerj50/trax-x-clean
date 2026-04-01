@@ -50,6 +50,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
   const [onlySelectedTicker, setOnlySelectedTicker] = useState(false);
   const [lastLoadCount, setLastLoadCount] = useState(0);
   const [targets, setTargets] = useState([]);
+  const [targetsFallbackMessage, setTargetsFallbackMessage] = useState("");
   const [nearMisses, setNearMisses] = useState([]);
   const [failureSummary, setFailureSummary] = useState([]);
   const [loadingTargets, setLoadingTargets] = useState(false);
@@ -101,6 +102,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
   const loadQualifiedTargets = async () => {
     try {
       setLoadingTargets(true);
+      setTargetsFallbackMessage("");
       const params = new URLSearchParams({
         mode,
         limit: "20",
@@ -127,12 +129,17 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         const misses = (Array.isArray(fallbackData?.targets) ? fallbackData.targets : [])
           .filter((item) => !item.qualified)
           .slice(0, 8);
+        if (loadedTargets.length === 0 && misses.length > 0) {
+          setTargets(misses);
+          setTargetsFallbackMessage("No names fully qualified. Showing highest-ranked near misses instead.");
+        }
         setNearMisses(misses);
       } else {
         setNearMisses([]);
       }
     } catch (error) {
       setTargets([]);
+      setTargetsFallbackMessage("");
       setFailureSummary([]);
       setNearMisses([]);
     } finally {
@@ -236,7 +243,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         near_min_score: String(aiNearMinScore),
         near_distance_pct: String(aiNearDistancePct),
       });
-      const data = await apiFetch(`/api/ai-picks?${params}`);
+      const data = await apiFetch(`/api/ai-picks?${params}`, { timeoutMs: 35000 });
       setAiPicks(Array.isArray(data?.picks) ? data.picks : []);
       setAiPicksGeneratedAt(String(data?.generated_at || ""));
       setAiPicksDebug(data?.debug && typeof data.debug === "object" ? data.debug : null);
@@ -244,7 +251,12 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
       setAiPicks([]);
       setAiPicksGeneratedAt("");
       setAiPicksDebug(null);
-      setAiPicksError(error?.message || "AI picks unavailable");
+      const message = String(error?.message || "");
+      setAiPicksError(
+        message.includes("timed out")
+          ? "AI picks are taking longer than usual to rank. Try again in a moment."
+          : message || "AI picks unavailable"
+      );
     } finally {
       setLoadingAiPicks(false);
     }
@@ -617,6 +629,11 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
           </div>
         )}
 
+        {targetsFallbackMessage && (
+          <div style={{ margin: "0 0 10px 0", color: "#fcd34d", fontSize: "12px" }}>
+            {targetsFallbackMessage}
+          </div>
+        )}
         {targets.length === 0 ? (
           <div style={{ color: "#9ca3af", border: "1px dashed #334155", borderRadius: "10px", padding: "14px" }}>
             <p style={{ margin: 0 }}>No targets matched current filters.</p>

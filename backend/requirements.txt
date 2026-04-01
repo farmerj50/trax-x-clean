@@ -1,8 +1,6 @@
 flask
 flask-cors
 flask-socketio
-gunicorn
-eventlet
 websocket-client
 python-dotenv
 yfinance
