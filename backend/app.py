@@ -2322,6 +2322,12 @@ def _fetch_polygon_snapshot_rows():
         response.raise_for_status()
         payload = response.json()
     except requests.exceptions.RequestException as exc:
+        detail = str(exc)
+        if "WinError 10013" in detail:
+            raise RuntimeError(
+                "Polygon snapshot request failed because the local backend is blocked from opening outbound connections "
+                "to api.polygon.io:443 (WinError 10013). Check Windows Firewall, antivirus, VPN, or corporate network rules."
+            ) from exc
         raise RuntimeError(f"Polygon snapshot request failed: {exc}") from exc
     return payload.get("tickers", []) or []
 

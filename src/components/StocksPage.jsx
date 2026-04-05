@@ -5,6 +5,7 @@ import AddTicker from "./AddTicker";
 import MarketSignalsFeed from "./MarketSignalsFeed";
 import "./StocksPage.css";
 import { apiFetch } from "../apiClient";
+import { computeLiveSignalsFromBars } from "../lib/stockSignalEngine";
 
 import {
   ChartComponent,
@@ -26,8 +27,10 @@ import {
 const POLYGON_WS_URL = "wss://delayed.polygon.io/stocks"; // 15-min delayed data
 const POLYGON_API_KEY = process.env.REACT_APP_POLYGON_API_KEY;
 const BUILD_MARKER = "TRAX BUILD 2026-03-30 v3";
+const STOCK_ALERTS_STORAGE_KEY = "stockPageAlerts";
+const AI_TOP_PICKS_REFRESH_MS = 5 * 60 * 1000;
+const AI_TOP_PICKS_TIMEOUT_MS = 60000;
 
-const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const fmtPrice = (value) => (Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "-");
 const fmtPct = (value) => `${Number(value || 0).toFixed(2)}%`;
 const fmtVolume = (value) => {
@@ -39,257 +42,30 @@ const fmtVolume = (value) => {
   return `${Math.round(n)}`;
 };
 
-const ema = (values, period) => {
-  if (!values.length) return 0;
-  const k = 2 / (period + 1);
-  let e = values[0];
-  for (let i = 1; i < values.length; i += 1) e = values[i] * k + e * (1 - k);
-  return e;
-};
-
-const rsi = (closes, period = 14) => {
-  if (closes.length < period + 1) return 50;
-  let gains = 0;
-  let losses = 0;
-  for (let i = closes.length - period; i < closes.length; i += 1) {
-    const diff = closes[i] - closes[i - 1];
-    if (diff >= 0) gains += diff;
-    else losses -= diff;
+const loadStoredStockAlerts = () => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STOCK_ALERTS_STORAGE_KEY);
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
   }
-  const rs = losses === 0 ? 999 : gains / losses;
-  return 100 - 100 / (1 + rs);
 };
 
-const computePhase = (candles, vwapVal) => {
-  if (!candles || candles.length < 30) return { phase: "Insufficient Data" };
-
-  const closes = candles.map((c) => c.c);
-  const highs = candles.map((c) => c.h);
-  const lows = candles.map((c) => c.l);
-  const volumes = candles.map((c) => c.v || 0);
-  const last = candles[candles.length - 1];
-
-  const high20 = Math.max(...highs.slice(-20));
-  const low20 = Math.min(...lows.slice(-20));
-  const rangePct = last.c > 0 ? (high20 - low20) / last.c : 999;
-  const avgVol10 = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
-  const volumeSpike = (last.v || 0) > avgVol10 * 1.5;
-  const ema9 = ema(closes.slice(-30), 9);
-  const ema21 = ema(closes.slice(-50), 21);
-  const distanceFromVWAP = vwapVal > 0 ? (last.c - vwapVal) / vwapVal : 0;
-  const r = rsi(closes, 14);
-
-  const isCompression =
-    rangePct < 0.012 &&
-    Math.abs(ema9 - ema21) / Math.max(last.c, 1e-6) < 0.002 &&
-    last.c >= high20 * 0.99;
-
-  const isEarlyExpansion =
-    last.c > high20 &&
-    volumeSpike &&
-    last.c > vwapVal &&
-    ema9 > ema21;
-
-  const isTrend =
-    ema9 > ema21 &&
-    last.c > vwapVal &&
-    distanceFromVWAP < 0.05;
-
-  const isExhaustion =
-    distanceFromVWAP > 0.05 &&
-    volumeSpike &&
-    r > 78;
-
-  let phase = "Neutral / Chop";
-  if (isExhaustion) phase = "Exhaustion";
-  else if (isEarlyExpansion) phase = "Early Expansion";
-  else if (isTrend) phase = "Trend Expansion";
-  else if (isCompression) phase = "Compression";
-
-  return { phase, high20, low20, rangePct, volumeSpike, ema9, ema21, distanceFromVWAP };
+const deriveAiConfidence = (score) => {
+  const numericScore = Number(score || 0);
+  if (numericScore > 80) return "High";
+  if (numericScore > 60) return "Medium";
+  return "Low";
 };
 
-const swingLow = (candles, lookback = 10) => {
-  const slice = candles.slice(-lookback);
-  return Math.min(...slice.map((c) => c.l));
+const formatTimeLabel = (value) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleTimeString();
 };
 
-const swingHigh = (candles, lookback = 10) => {
-  const slice = candles.slice(-lookback);
-  return Math.max(...slice.map((c) => c.h));
-};
-
-const percentOf = (value, pct) => value * (pct / 100);
-
-const computeTradePlan = ({ candles, vwap, ema9, ema21, phase, moveTodayPct = 0, distanceFromVwap = 0 }) => {
-  if (!candles || candles.length < 20) {
-    return {
-      planLabel: "No Plan",
-      entry: null,
-      stop: null,
-      targets: null,
-      live: { price: candles?.[candles.length - 1]?.c ?? null, rMultiple: null, guidance: "WAIT" },
-      tooLate: false,
-    };
-  }
-
-  const last = candles[candles.length - 1];
-  const price = last.c;
-  const high20 = Math.max(...candles.slice(-20).map((c) => c.h));
-  const low20 = Math.min(...candles.slice(-20).map((c) => c.l));
-  const buffer = Math.max(0.01, percentOf(price, 0.05));
-  const pullbackReclaimBand = Math.max(ema9, vwap);
-  const cleanPullbackReclaim = phase === "Trend Expansion" && price >= pullbackReclaimBand * 0.998 && price <= pullbackReclaimBand * 1.01;
-  const tooLate = (distanceFromVwap > 0.06 || moveTodayPct > 35) && !cleanPullbackReclaim;
-
-  let entry = null;
-  let stop = null;
-  let planLabel = "No Plan";
-
-  if (tooLate) {
-    planLabel = "No New Long (Too Late)";
-  } else if (phase === "Compression") {
-    entry = high20 + buffer;
-    stop = Math.min(low20 - buffer, vwap - buffer);
-    planLabel = "Breakout Trigger";
-  } else if (phase === "Early Expansion") {
-    entry = Math.max(ema9, high20) + buffer;
-    stop = Math.min(vwap - buffer, swingLow(candles, 8) - buffer);
-    planLabel = "Early Expansion Entry";
-  } else if (phase === "Trend Expansion") {
-    entry = Math.max(ema9, vwap) + buffer;
-    stop = Math.min(vwap - buffer, swingLow(candles, 10) - buffer);
-    planLabel = "Trend Pullback Entry";
-  } else if (phase === "Exhaustion") {
-    planLabel = "No New Long (Exhaustion)";
-  }
-
-  if (!entry || !stop || entry <= stop) {
-    return {
-      planLabel,
-      entry,
-      stop,
-      targets: null,
-      live: { price, rMultiple: null, guidance: "WAIT" },
-      tooLate,
-      context: { vwap, ema9, ema21, high20, low20, swingHigh10: swingHigh(candles, 10) },
-    };
-  }
-
-  const risk = entry - stop;
-  const target1 = entry + risk;
-  const target2 = entry + risk * 2;
-  const target3 = entry + risk * 3;
-  const rMultiple = (price - entry) / risk;
-
-  let guidance = "WAIT";
-  if (price < entry) guidance = "WAIT";
-  else if (price >= entry && price < target1) guidance = "HOLD";
-  else if (price >= target1 && price < target2) guidance = "TAKE_PARTIAL";
-  else if (price >= target2) guidance = "TRAIL";
-  if (price <= stop || phase === "Exhaustion") guidance = "EXIT";
-
-  return {
-    planLabel,
-    entry,
-    stop,
-    targets: { target1, target2, target3 },
-    live: { price, rMultiple: clamp(rMultiple, -5, 10), guidance },
-    tooLate,
-    context: { vwap, ema9, ema21, high20, low20, swingHigh10: swingHigh(candles, 10) },
-  };
-};
-
-const computeLiveSignals = (candles) => {
-  if (!candles || candles.length < 30) {
-    return {
-      continuation: 50,
-      pullbackRisk: 50,
-      reason: "Need more live candles",
-      state: "Neutral/Chop",
-      phase: "Insufficient Data",
-    };
-  }
-
-  const closes = candles.map((c) => c.c);
-  const volumes = candles.map((c) => c.v || 0);
-  const last = candles[candles.length - 1];
-  const ema9 = ema(closes.slice(-60), 9);
-  const ema21 = ema(closes.slice(-80), 21);
-  const r = rsi(closes, 14);
-  const rawVwap = last.vw && Number.isFinite(last.vw) ? last.vw : last.c;
-  const vwapVal = rawVwap > 0 && Math.abs(rawVwap - last.c) / last.c < 0.25 ? rawVwap : last.c;
-  const distFromVwap = vwapVal > 0 ? (last.c - vwapVal) / vwapVal : 0;
-  const recentVol = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
-  const baseVol = volumes.slice(-30).reduce((a, b) => a + b, 0) / 30;
-  const rvol = baseVol > 0 ? recentVol / baseVol : 1;
-  const recent = candles.slice(-8);
-  const hh = recent[recent.length - 1].h > recent[0].h;
-  const hl = recent[recent.length - 1].l > recent[0].l;
-
-  const body = Math.abs(last.c - last.o);
-  const upperWick = last.h - Math.max(last.o, last.c);
-  const wickiness = body > 0 ? upperWick / body : 0;
-  const climax = rvol >= 2;
-
-  let continuation = 50;
-  if (last.c > vwapVal) continuation += 12;
-  if (ema9 > ema21) continuation += 10;
-  if (last.c > ema9) continuation += 8;
-  if (hh && hl) continuation += 10;
-  if (rvol >= 1.5) continuation += 8;
-  if (r < 80) continuation += 4;
-
-  let pullbackRisk = 35;
-  if (distFromVwap > 0.03) pullbackRisk += 15;
-  if (distFromVwap > 0.06) pullbackRisk += 10;
-  if (r > 75) pullbackRisk += 12;
-  if (wickiness > 1.2) pullbackRisk += 10;
-  if (climax) pullbackRisk += 8;
-  if (last.c < ema9) pullbackRisk += 10;
-  if (last.c < vwapVal) pullbackRisk += 10;
-
-  continuation = clamp(continuation, 0, 100);
-  pullbackRisk = clamp(pullbackRisk, 0, 100);
-  const biasDelta = continuation - pullbackRisk;
-  const state = biasDelta >= 15 ? "Continuation Bias" : biasDelta <= -15 ? "Pullback Risk" : "Neutral/Chop";
-  const range = candles.slice(-20);
-  const rangeHigh = Math.max(...range.map((c) => c.h));
-  const rangeLow = Math.min(...range.map((c) => c.l));
-  const phaseInfo = computePhase(candles, vwapVal);
-  const moveTodayPct = closes[0] > 0 ? ((last.c - closes[0]) / closes[0]) * 100 : 0;
-  const tradePlan = computeTradePlan({
-    candles,
-    vwap: vwapVal,
-    ema9,
-    ema21,
-    phase: phaseInfo.phase,
-    moveTodayPct,
-    distanceFromVwap: distFromVwap,
-  });
-
-  const reason = [
-    `Phase ${phaseInfo.phase}`,
-    last.c > vwapVal ? "Above VWAP" : "Below VWAP",
-    ema9 > ema21 ? "EMA9>EMA21" : "EMA9<=EMA21",
-    `RVOL ${rvol.toFixed(2)}`,
-    `RSI ${r.toFixed(0)}`,
-    `${(distFromVwap * 100).toFixed(1)}% vs VWAP`,
-  ].join(" | ");
-
-  return {
-    continuation,
-    pullbackRisk,
-    reason,
-    state,
-    phase: phaseInfo.phase,
-    vwap: vwapVal,
-    rangeHigh,
-    rangeLow,
-    plan: tradePlan,
-    tooLate: tradePlan.tooLate,
-  };
-};
 const StocksPage = ({ theme = "dark" }) => {
   const [ticker, setTicker] = useState("");
   const [selectedTicker, setSelectedTicker] = useState("AAPL");
@@ -306,6 +82,12 @@ const StocksPage = ({ theme = "dark" }) => {
   const [prevTicker, setPrevTicker] = useState(null);
   const [liveCandles, setLiveCandles] = useState([]);
   const [liveSignal, setLiveSignal] = useState(null);
+  const [topPickUniverse, setTopPickUniverse] = useState([]);
+  const [topPicksGeneratedAt, setTopPicksGeneratedAt] = useState("");
+  const [topPicksLoading, setTopPicksLoading] = useState(false);
+  const [topPicksError, setTopPicksError] = useState("");
+  const [alerts, setAlerts] = useState(loadStoredStockAlerts);
+  const [latestAlertMessage, setLatestAlertMessage] = useState("");
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const isMountedRef = useRef(false);
@@ -525,8 +307,126 @@ const StocksPage = ({ theme = "dark" }) => {
   }, [selectedTicker]);
 
   useEffect(() => {
-    setLiveSignal(computeLiveSignals(liveCandles));
+    setLiveSignal(computeLiveSignalsFromBars(liveCandles));
   }, [liveCandles]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STOCK_ALERTS_STORAGE_KEY, JSON.stringify(alerts));
+  }, [alerts]);
+
+  const loadTopPicks = async () => {
+    try {
+      setTopPicksLoading(true);
+      setTopPicksError("");
+      const params = new URLSearchParams({
+        limit: "8",
+        pool_limit: "120",
+      });
+      const data = await apiFetch(`/api/ai-picks?${params}`, { timeoutMs: AI_TOP_PICKS_TIMEOUT_MS });
+      setTopPickUniverse(Array.isArray(data?.picks) ? data.picks : []);
+      setTopPicksGeneratedAt(String(data?.generated_at || ""));
+    } catch (err) {
+      setTopPickUniverse([]);
+      setTopPicksGeneratedAt("");
+      setTopPicksError(err.message || "AI picks unavailable");
+    } finally {
+      setTopPicksLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTopPicks();
+    const interval = setInterval(() => {
+      loadTopPicks();
+    }, AI_TOP_PICKS_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  const topPicks = useMemo(() => topPickUniverse.slice(0, 3), [topPickUniverse]);
+  const activeAlerts = useMemo(() => alerts.filter((item) => !item.triggeredAt), [alerts]);
+  const triggeredAlerts = useMemo(() => alerts.filter((item) => item.triggeredAt), [alerts]);
+
+  const armAlert = ({ symbol, entry, target = null, source = "manual" }) => {
+    const normalizedSymbol = String(symbol || "").toUpperCase();
+    const numericEntry = Number(entry);
+    const numericTarget = Number(target);
+    if (!normalizedSymbol || !Number.isFinite(numericEntry) || numericEntry <= 0) {
+      setLatestAlertMessage("No valid entry level available for this alert.");
+      return;
+    }
+
+    let message = "";
+    setAlerts((prev) => {
+      const duplicate = prev.find(
+        (item) =>
+          !item.triggeredAt &&
+          item.symbol === normalizedSymbol &&
+          Math.abs(Number(item.entry || 0) - numericEntry) < 0.01
+      );
+      if (duplicate) {
+        message = `${normalizedSymbol} alert is already armed near ${fmtPrice(numericEntry)}.`;
+        return prev;
+      }
+      message = `${normalizedSymbol} alert armed at ${fmtPrice(numericEntry)}.`;
+      return [
+        {
+          id: `${normalizedSymbol}-${Date.now()}`,
+          symbol: normalizedSymbol,
+          entry: numericEntry,
+          target: Number.isFinite(numericTarget) ? numericTarget : null,
+          source,
+          createdAt: new Date().toISOString(),
+          triggeredAt: null,
+          triggerPrice: null,
+        },
+        ...prev,
+      ].slice(0, 24);
+    });
+    if (message) setLatestAlertMessage(message);
+  };
+
+  const triggerAlertsForSymbol = (symbol, price) => {
+    const normalizedSymbol = String(symbol || "").toUpperCase();
+    const numericPrice = Number(price);
+    if (!normalizedSymbol || !Number.isFinite(numericPrice) || numericPrice <= 0) return;
+
+    let fired = [];
+    setAlerts((prev) =>
+      prev.map((item) => {
+        if (item.triggeredAt || item.symbol !== normalizedSymbol || numericPrice < Number(item.entry || 0)) {
+          return item;
+        }
+        const triggered = {
+          ...item,
+          triggeredAt: new Date().toISOString(),
+          triggerPrice: numericPrice,
+        };
+        fired.push(triggered);
+        return triggered;
+      })
+    );
+
+    if (fired.length > 0) {
+      const first = fired[0];
+      setLatestAlertMessage(`${first.symbol} hit entry ${fmtPrice(first.entry)} at ${fmtPrice(first.triggerPrice)}.`);
+    }
+  };
+
+  useEffect(() => {
+    triggerAlertsForSymbol(selectedTicker, livePrice);
+  }, [selectedTicker, livePrice]);
+
+  useEffect(() => {
+    topPickUniverse.forEach((item) => {
+      triggerAlertsForSymbol(item.symbol, item.price);
+    });
+  }, [topPickUniverse]);
+
+  const clearTriggeredAlerts = () => {
+    setAlerts((prev) => prev.filter((item) => !item.triggeredAt));
+    setLatestAlertMessage("Triggered alerts cleared.");
+  };
 
   const safeChartData = Array.isArray(chartData)
     ? chartData.filter(
@@ -647,6 +547,8 @@ const StocksPage = ({ theme = "dark" }) => {
               <span style={pillStyle}>Feed: {connectionStatus}</span>
               <span style={pillStyle}>Last update: {lastUpdate || "-"}</span>
               <span style={pillStyle}>Phase: {liveSignal?.phase || "Insufficient Data"}</span>
+              <span style={pillStyle}>Confidence: {liveSignal?.confidence || "Low"}</span>
+              <span style={pillStyle}>Alerts: {activeAlerts.length} armed / {triggeredAlerts.length} hit</span>
             </div>
           </div>
 
@@ -665,10 +567,56 @@ const StocksPage = ({ theme = "dark" }) => {
           </div>
         </div>
 
+        <div style={{ marginTop: "16px", border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "10px" }}>
+            <div>
+              <div style={{ fontSize: "20px", fontWeight: 700, color: themeColors.heading }}>Top 3 AI Picks</div>
+              <div style={{ fontSize: "12px", color: themeColors.mutedText }}>
+                {topPicksGeneratedAt ? `Last scan ${formatTimeLabel(topPicksGeneratedAt)}` : "Auto-refresh every 5 minutes"}
+              </div>
+            </div>
+            {topPicksLoading && <div style={{ fontSize: "12px", color: themeColors.mutedText }}>Refreshing AI picks...</div>}
+          </div>
+
+          {topPicks.length === 0 ? (
+            <div style={{ fontSize: "13px", color: themeColors.subtleText }}>
+              {topPicksError || "No AI picks available right now."}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(220px, 1fr))", gap: "12px" }}>
+              {topPicks.map((item) => (
+                <div key={`top-pick-${item.symbol}`} style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.pillBackground }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: themeColors.heading }}>{item.symbol}</div>
+                      <div style={{ fontSize: "12px", color: themeColors.mutedText }}>Score {Number(item.score || 0).toFixed(0)} • Confidence {deriveAiConfidence(item.score)}</div>
+                    </div>
+                    <button
+                      onClick={() => armAlert({ symbol: item.symbol, entry: item.plan?.entry || item.plan?.trigger, target: item.plan?.target1, source: "ai-pick" })}
+                      style={{ ...buttonStyle, minHeight: "34px", padding: "0 12px" }}
+                    >
+                      Alert me
+                    </button>
+                  </div>
+
+                  <div style={{ marginTop: "10px", display: "grid", gap: "6px", fontSize: "13px", color: themeColors.neutralText }}>
+                    <div>Entry: {fmtPrice(item.plan?.entry || item.plan?.trigger)}</div>
+                    <div>Target: {fmtPrice(item.plan?.target1)}</div>
+                    <div>Price: {fmtPrice(item.price)}</div>
+                    <div style={{ color: themeColors.subtleText }}>{Array.isArray(item.reasons) ? item.reasons.join(" | ") : "No reason provided."}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: "16px", marginTop: "16px" }}>
           <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
             <div style={{ fontSize: "20px", fontWeight: 700, color: themeColors.heading, marginBottom: "10px" }}>Live Candle Signal</div>
             <div style={{ display: "grid", gap: "6px", fontSize: "14px" }}>
+              <div style={{ color: "#fcd34d" }}>Score: {liveSignal?.score?.toFixed?.(0) ?? "-"}</div>
+              <div style={{ color: liveSignal?.confidence === "High" ? "#22c55e" : liveSignal?.confidence === "Medium" ? "#93c5fd" : "#d1d5db" }}>Confidence: {liveSignal?.confidence || "Low"}</div>
               <div style={{ color: liveSignal?.continuation >= 65 ? "#22c55e" : "#d1d5db" }}>Continuation: {liveSignal?.continuation?.toFixed?.(0) ?? "-"}</div>
               <div style={{ color: liveSignal?.pullbackRisk >= 65 ? "#ef4444" : "#d1d5db" }}>Pullback Risk: {liveSignal?.pullbackRisk?.toFixed?.(0) ?? "-"}</div>
               <div style={{ color: "#93c5fd" }}>State: {liveSignal?.state || "Neutral/Chop"}</div>
@@ -694,10 +642,49 @@ const StocksPage = ({ theme = "dark" }) => {
                 <span style={pillStyle}>Stop {fmtPrice(liveSignal?.plan?.stop)}</span>
                 <span style={pillStyle}>T1 {fmtPrice(liveSignal?.plan?.targets?.target1)}</span>
               </div>
+              <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => armAlert({ symbol: selectedTicker, entry: liveSignal?.plan?.entry, target: liveSignal?.plan?.targets?.target1, source: "selected-ticker" })}
+                  style={{ ...buttonStyle, minHeight: "34px", padding: "0 12px" }}
+                >
+                  Alert me
+                </button>
+                {triggeredAlerts.length > 0 && (
+                  <button onClick={clearTriggeredAlerts} style={{ ...buttonStyle, minHeight: "34px", padding: "0 12px" }}>
+                    Clear triggered
+                  </button>
+                )}
+              </div>
+              <div style={{ marginTop: "10px", fontSize: "12px", color: themeColors.subtleText }}>
+                {latestAlertMessage || "Alerts persist locally and trigger when price reaches entry."}
+              </div>
             </div>
             <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
               <div style={{ fontSize: "13px", color: themeColors.mutedText, marginBottom: "8px" }}>Watchlist</div>
               <AddTicker />
+            </div>
+            <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
+              <div style={{ fontSize: "13px", color: themeColors.mutedText, marginBottom: "8px" }}>Alerts</div>
+              {alerts.length === 0 ? (
+                <div style={{ fontSize: "12px", color: themeColors.subtleText }}>No alerts armed yet.</div>
+              ) : (
+                <div style={{ display: "grid", gap: "8px" }}>
+                  {alerts.slice(0, 4).map((item) => (
+                    <div key={item.id} style={{ border: `1px solid ${themeColors.border}`, borderRadius: "10px", padding: "10px", background: themeColors.pillBackground }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", fontSize: "12px" }}>
+                        <strong style={{ color: themeColors.heading }}>{item.symbol}</strong>
+                        <span style={{ color: item.triggeredAt ? "#22c55e" : themeColors.mutedText }}>{item.triggeredAt ? "Triggered" : "Armed"}</span>
+                      </div>
+                      <div style={{ marginTop: "4px", fontSize: "12px", color: themeColors.neutralText }}>
+                        Entry {fmtPrice(item.entry)}{item.target ? ` | Target ${fmtPrice(item.target)}` : ""}
+                      </div>
+                      <div style={{ marginTop: "4px", fontSize: "11px", color: themeColors.subtleText }}>
+                        {item.triggeredAt ? `Hit at ${fmtPrice(item.triggerPrice)} on ${formatTimeLabel(item.triggeredAt)}` : `Created ${formatTimeLabel(item.createdAt)}`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
               <div style={{ fontSize: "13px", color: themeColors.mutedText, marginBottom: "8px" }}>Live Price Feed</div>
