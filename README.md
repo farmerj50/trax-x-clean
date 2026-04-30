@@ -1,70 +1,133 @@
-# Getting Started with Create React App
+# TRAX-X
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+TRAX-X is a React + Flask trading dashboard with stock scans, AI-ranked picks, live stock monitoring, options tooling, and premarket intelligence views.
 
-## Available Scripts
+## Stack
 
-In the project directory, you can run:
+- Frontend: React (`src/`)
+- Backend: Flask + Socket.IO (`backend/`)
+- Market data: Polygon
+- Additional data: Alpha Vantage
 
-### `npm start`
+## Environment
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Use two env files locally:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- Root `.env`: frontend-safe values only.
+- `backend/.env`: backend secrets and server-only feature flags.
 
-### `npm test`
+Root `.env`:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```env
+REACT_APP_API_BASE=http://localhost:5000
+REACT_APP_SOCKET_BASE=ws://localhost:5000
+REACT_APP_POLYGON_API_KEY=your_polygon_key
+```
 
-### `npm run build`
+`backend/.env`:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```env
+POLYGON_API_KEY=your_polygon_key
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Optional backend env vars for `backend/.env`:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```env
+ENABLE_MARKET_SIGNALS=true
+ENABLE_OPTIONS_FLOW_SIGNALS=false
+MARKET_SIGNALS_BIG_PRINT_THRESHOLD=10000000
+MARKET_SIGNALS_SUBSCRIBE=
+INTRINIO_API_KEY=
+ENABLE_TRADING=false
+TRADING_MODE=paper
+TRADING_STARTING_CASH=100000
+TRADING_PAPER_AUTO_FILL=true
+TRADING_PROVIDER=paper
+ALPACA_BROKER_ENV=sandbox
+ALPACA_BROKER_API_BASE=https://broker-api.sandbox.alpaca.markets
+ALPACA_BROKER_API_KEY=
+ALPACA_BROKER_API_SECRET=
+ALPACA_BROKER_ENABLED=false
+ALPACA_BROKER_ACCOUNT_ID=
+ALPACA_BROKER_ALLOW_ORDERS=false
+```
 
-### `npm run eject`
+The backend prefers `backend/.env` and falls back to the repo-root `.env` for older local setups.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Optional frontend runtime env vars:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```env
+REACT_APP_API_BASE=http://localhost:5000
+REACT_APP_SOCKET_BASE=ws://localhost:5000
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Install
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Frontend:
 
-## Learn More
+```powershell
+npm install
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Backend:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cd ..
+```
 
-### Code Splitting
+## Run Locally
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Start backend:
 
-### Analyzing the Bundle Size
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+python app.py
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Start frontend in another terminal:
 
-### Making a Progressive Web App
+```powershell
+npm start
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+Frontend default:
 
-### Advanced Configuration
+- `http://localhost:3000`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+Backend default:
 
-### Deployment
+- `http://localhost:5000`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Health check:
 
-### `npm run build` fails to minify
+- `http://localhost:5000/health`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Common Commands
+
+Frontend test:
+
+```powershell
+npm test -- --watchAll=false --runInBand
+```
+
+Frontend production build:
+
+```powershell
+npm run build
+```
+
+## Notes
+
+- `backend/config.py` is the source of truth for backend paths and required API keys.
+- Market scanners and AI picks depend on live upstream market data and can be slow locally.
+- The React app proxies API requests to the backend on port `5000`.
+- The trading layer is paper-only in this codebase. Live broker execution is intentionally not wired in.
+- Alpaca Broker sandbox account discovery is read-only through `/api/trading/alpaca/accounts`.
+- Order routing uses `ALPACA_BROKER_ACCOUNT_ID` when set; otherwise it uses the selected Alpaca account saved through `/api/trading/alpaca/selected-account`.
+- Alpaca order submission remains locked unless `ALPACA_BROKER_ALLOW_ORDERS=true`; use `/api/trading/orders/preview` or the Trading page preview before submitting.

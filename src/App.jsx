@@ -13,6 +13,9 @@ import NextDayPicksPage from "./components/NextDayPicksPage";
 import BiggestGainsPage from "./components/BiggestGainsPage";
 import ThreeDayBreakoutsPage from "./components/ThreeDayBreakoutsPage";
 import PremarketIntelligencePage from "./components/PremarketIntelligencePage";
+import SocialTrackerPage from "./components/SocialTrackerPage";
+import TradingPage from "./components/TradingPage";
+import GlobalAlertContactBar from "./components/GlobalAlertContactBar";
 import { apiFetch } from "./apiClient";
 import "./App.css";
 
@@ -123,10 +126,14 @@ const App = () => {
           </div>
           <Link to="/options"><button>Options</button></Link>
           <Link to="/crypto"><button>Crypto</button></Link>
+          <Link to="/trading"><button>Trading</button></Link>
+          <Link to="/social-tracker"><button>Social</button></Link>
           <Link to="/short-sales"><button>Short Sales</button></Link>
           <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Light Mode" : "Dark Mode"}</button>
         </div>
       </div>
+
+      <GlobalAlertContactBar />
 
       <Routes>
         <Route
@@ -171,6 +178,8 @@ const App = () => {
         <Route path="/three-day-breakouts" element={<ThreeDayBreakoutsPage />} />
         <Route path="/options" element={<OptionsPage theme={theme} />} />
         <Route path="/crypto" element={<CryptoPage theme={theme} />} />
+        <Route path="/trading" element={<TradingPage theme={theme} />} />
+        <Route path="/social-tracker" element={<SocialTrackerPage theme={theme} />} />
         <Route path="/short-sales" element={<ShortSalesPage theme={theme} />} />
         <Route path="/biggest-gains" element={<BiggestGainsPage />} />
         <Route path="/premarket-intelligence" element={<PremarketIntelligencePage theme={theme} />} />

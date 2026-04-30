@@ -66,6 +66,28 @@ const formatTimeLabel = (value) => {
   return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleTimeString();
 };
 
+const formatRelativeAge = (value, nowMs) => {
+  if (!value) return "Waiting for fresh scan";
+  const parsedMs = new Date(value).getTime();
+  if (Number.isNaN(parsedMs)) return "Waiting for fresh scan";
+  const deltaSeconds = Math.max(0, Math.round((nowMs - parsedMs) / 1000));
+  if (deltaSeconds < 60) return `Updated ${deltaSeconds}s ago`;
+  const minutes = Math.round(deltaSeconds / 60);
+  return `Updated ${minutes}m ago`;
+};
+
+const getUrgencyState = (item) => {
+  const label = String(item?.alert?.label || "").toUpperCase();
+  const distancePct = Number(item?.alert?.distance_to_trigger_pct || 999);
+  if (label === "LIVE") {
+    return { badge: "LIVE", tone: "#ef4444", message: "Entry triggered now" };
+  }
+  if (label === "NEAR" || distancePct <= 1) {
+    return { badge: "ENTRY APPROACHING", tone: "#f59e0b", message: `${distancePct.toFixed(2)}% from trigger` };
+  }
+  return { badge: "WATCH", tone: "#93c5fd", message: `${distancePct.toFixed(2)}% from trigger` };
+};
+
 const StocksPage = ({ theme = "dark" }) => {
   const [ticker, setTicker] = useState("");
   const [selectedTicker, setSelectedTicker] = useState("AAPL");
@@ -88,6 +110,7 @@ const StocksPage = ({ theme = "dark" }) => {
   const [topPicksError, setTopPicksError] = useState("");
   const [alerts, setAlerts] = useState(loadStoredStockAlerts);
   const [latestAlertMessage, setLatestAlertMessage] = useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const isMountedRef = useRef(false);
@@ -95,6 +118,13 @@ const StocksPage = ({ theme = "dark" }) => {
 
   useEffect(() => {
     console.log(BUILD_MARKER);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   /** Ã°Å¸â€â€ž Fetch Historical Chart Data */
@@ -344,6 +374,10 @@ const StocksPage = ({ theme = "dark" }) => {
   }, []);
 
   const topPicks = useMemo(() => topPickUniverse.slice(0, 3), [topPickUniverse]);
+  const bestTradeNow = useMemo(
+    () => topPickUniverse.find((item) => Number(item?.plan?.entry || item?.plan?.trigger || 0) > 0) || null,
+    [topPickUniverse]
+  );
   const activeAlerts = useMemo(() => alerts.filter((item) => !item.triggeredAt), [alerts]);
   const triggeredAlerts = useMemo(() => alerts.filter((item) => item.triggeredAt), [alerts]);
 
@@ -565,6 +599,71 @@ const StocksPage = ({ theme = "dark" }) => {
             </div>
             <button onClick={handleSearch} style={buttonStyle}>Search</button>
           </div>
+        </div>
+
+        <div style={{ marginTop: "16px", border: `1px solid ${themeColors.border}`, borderRadius: "14px", padding: "16px", background: isDark ? "linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.92))" : "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(226,232,240,0.98))", boxShadow: isDark ? "0 20px 45px rgba(2,6,23,0.28)" : "0 20px 45px rgba(15,23,42,0.08)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: "12px", letterSpacing: "0.08em", textTransform: "uppercase", color: themeColors.mutedText }}>Best Trade Now</div>
+              {bestTradeNow ? (
+                <>
+                  <div style={{ marginTop: "6px", fontSize: "34px", lineHeight: 1, fontWeight: 900, color: themeColors.heading }}>{bestTradeNow.symbol}</div>
+                  <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <span style={{ ...pillStyle, color: getUrgencyState(bestTradeNow).tone, borderColor: getUrgencyState(bestTradeNow).tone }}>{getUrgencyState(bestTradeNow).badge}</span>
+                    <span style={pillStyle}>{formatRelativeAge(topPicksGeneratedAt, nowMs)}</span>
+                    <span style={{ ...pillStyle, color: "#fcd34d" }}>{getUrgencyState(bestTradeNow).message}</span>
+                  </div>
+                </>
+              ) : (
+                <div style={{ marginTop: "8px", fontSize: "14px", color: themeColors.subtleText }}>
+                  {topPicksError || "No actionable trade surfaced yet."}
+                </div>
+              )}
+            </div>
+
+            {bestTradeNow && (
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => armAlert({ symbol: bestTradeNow.symbol, entry: bestTradeNow.plan?.entry || bestTradeNow.plan?.trigger, target: bestTradeNow.plan?.target1, source: "best-trade" })}
+                  style={buttonStyle}
+                >
+                  Alert me
+                </button>
+                <button
+                  onClick={() => {
+                    setTicker(bestTradeNow.symbol);
+                    setSelectedTicker(bestTradeNow.symbol);
+                  }}
+                  style={buttonStyle}
+                >
+                  Open chart
+                </button>
+              </div>
+            )}
+          </div>
+
+          {bestTradeNow && (
+            <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+              <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "12px", background: themeColors.pillBackground }}>
+                <div style={{ fontSize: "12px", color: themeColors.mutedText }}>Entry</div>
+                <div style={{ marginTop: "4px", fontSize: "22px", fontWeight: 800, color: themeColors.heading }}>{fmtPrice(bestTradeNow.plan?.entry || bestTradeNow.plan?.trigger)}</div>
+              </div>
+              <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "12px", background: themeColors.pillBackground }}>
+                <div style={{ fontSize: "12px", color: themeColors.mutedText }}>Target</div>
+                <div style={{ marginTop: "4px", fontSize: "22px", fontWeight: 800, color: themeColors.heading }}>{fmtPrice(bestTradeNow.plan?.target1)}</div>
+              </div>
+              <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "12px", background: themeColors.pillBackground }}>
+                <div style={{ fontSize: "12px", color: themeColors.mutedText }}>Confidence</div>
+                <div style={{ marginTop: "4px", fontSize: "22px", fontWeight: 800, color: themeColors.heading }}>{deriveAiConfidence(bestTradeNow.score)}</div>
+              </div>
+              <div style={{ border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "12px", background: themeColors.pillBackground }}>
+                <div style={{ fontSize: "12px", color: themeColors.mutedText }}>Reason</div>
+                <div style={{ marginTop: "4px", fontSize: "14px", fontWeight: 600, color: themeColors.heading }}>
+                  {Array.isArray(bestTradeNow.reasons) && bestTradeNow.reasons.length > 0 ? bestTradeNow.reasons.join(" + ") : "Scanning for a clean setup"}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: "16px", border: `1px solid ${themeColors.border}`, borderRadius: "12px", padding: "14px", background: themeColors.panelBackground }}>
