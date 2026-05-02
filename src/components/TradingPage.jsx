@@ -25,11 +25,20 @@ const qty = (value) => {
   return Number.isFinite(num) ? num.toLocaleString(undefined, { maximumFractionDigits: 8 }) : "-";
 };
 
+const alpacaAccountErrorMessage = (err) => {
+  const raw = err?.message || "";
+  if (/unauthorized|rejected the broker api credentials|HTTP 401/i.test(raw)) {
+    return "Alpaca rejected the Broker API credentials. Confirm the Broker API key and secret match the selected Broker Dashboard environment.";
+  }
+  return raw || "Failed to load Alpaca accounts.";
+};
+
 const TradingPage = () => {
   const [status, setStatus] = useState(null);
   const [account, setAccount] = useState(null);
   const [positions, setPositions] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [auditLog, setAuditLog] = useState([]);
   const [ticket, setTicket] = useState(defaultTicket);
   const [alpacaAccounts, setAlpacaAccounts] = useState([]);
   const [selectedAlpacaAccount, setSelectedAlpacaAccount] = useState(null);
@@ -39,8 +48,12 @@ const TradingPage = () => {
   const [previewingOrder, setPreviewingOrder] = useState(false);
   const [testingProvider, setTestingProvider] = useState(false);
   const [loadingAlpacaAccounts, setLoadingAlpacaAccounts] = useState(false);
+  const [creatingSandboxAccount, setCreatingSandboxAccount] = useState(false);
+  const [fundingSandboxAccount, setFundingSandboxAccount] = useState(false);
   const [checkingAlpacaEnv, setCheckingAlpacaEnv] = useState(false);
   const [orderPreview, setOrderPreview] = useState(null);
+  const [pendingSubmit, setPendingSubmit] = useState(null);
+  const [marketClock, setMarketClock] = useState(null);
   const [envDiagnostics, setEnvDiagnostics] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -50,28 +63,35 @@ const TradingPage = () => {
     try {
       setLoading(true);
       setError("");
-      const [accountData, positionsData, ordersData, selectedAlpacaData, readinessData] = await Promise.all([
+      const [accountData, positionsData, ordersData, selectedAlpacaData, readinessData, auditData, clockData] = await Promise.all([
         apiFetch("/api/trading/account"),
         apiFetch("/api/trading/positions"),
         apiFetch("/api/trading/orders?limit=25"),
         apiFetch("/api/trading/alpaca/selected-account"),
         apiFetch("/api/trading/readiness").catch(() => null),
+        apiFetch("/api/trading/audit-log?limit=25").catch(() => null),
+        apiFetch("/api/trading/market-clock").catch(() => null),
       ]);
       setStatus({
         enabled: accountData.enabled,
         mode: accountData.mode,
         provider: accountData.provider,
+        brokerEnvironment: accountData.brokerEnvironment,
+        brokerIsSandbox: accountData.brokerIsSandbox,
         supportedMode: accountData.supportedMode,
         liveTradingAvailable: accountData.liveTradingAvailable,
         brokerConfigured: accountData.brokerConfigured,
         paperAutoFill: accountData.paperAutoFill,
         orderSubmissionEnabled: accountData.orderSubmissionEnabled,
         orderSubmissionLocked: accountData.orderSubmissionLocked,
+        riskControls: accountData.riskControls,
         message: accountData.message,
       });
       setAccount(accountData.account || null);
       setPositions(Array.isArray(positionsData.positions) ? positionsData.positions : []);
       setOrders(Array.isArray(ordersData.orders) ? ordersData.orders : []);
+      setAuditLog(Array.isArray(auditData?.auditLog) ? auditData.auditLog : []);
+      setMarketClock(clockData?.clock || null);
       setSelectedAlpacaAccount(selectedAlpacaData || null);
       if (readinessData) {
         setReadiness(readinessData);
@@ -129,11 +149,16 @@ const TradingPage = () => {
 
   const submitOrder = async (event) => {
     event.preventDefault();
+    setPendingSubmit(buildOrderPayload());
+  };
+
+  const confirmSubmitOrder = async () => {
+    const payload = pendingSubmit;
+    if (!payload) return;
     try {
       setSubmitting(true);
       setError("");
       setMessage("");
-      const payload = buildOrderPayload();
       const response = await apiFetch("/api/trading/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -141,7 +166,9 @@ const TradingPage = () => {
       });
       setMessage(`Order ${response.order?.status || "submitted"}: ${response.order?.symbol || payload.symbol}`);
       setOrderPreview(null);
+      setPendingSubmit(null);
       await loadTrading();
+      window.setTimeout(loadTrading, 3000);
     } catch (err) {
       setError(err?.message || "Order rejected.");
     } finally {
@@ -191,9 +218,9 @@ const TradingPage = () => {
       if (response?.apiMissing?.length) {
         setAlpacaNotice(`Backend runtime is missing: ${response.apiMissing.join(", ")}.`);
       } else if (!response?.runtime?.ALPACA_BROKER_ALLOW_ORDERS) {
-        setAlpacaNotice("Backend sees Alpaca API keys. Sandbox order submission is still locked.");
+        setAlpacaNotice("Backend sees Alpaca API keys. Broker order submission is still locked.");
       } else {
-        setAlpacaNotice("Backend sees Alpaca API keys and sandbox order submission is unlocked.");
+        setAlpacaNotice("Backend sees Alpaca API keys and broker order submission is unlocked.");
       }
     } catch (err) {
       setEnvDiagnostics(null);
@@ -217,10 +244,61 @@ const TradingPage = () => {
         setAlpacaNotice(response.message || "Alpaca account discovery is not configured.");
       }
     } catch (err) {
-      setAlpacaNotice(err?.message || "Failed to load Alpaca accounts.");
+      setAlpacaNotice(alpacaAccountErrorMessage(err));
       setAlpacaAccounts([]);
     } finally {
       setLoadingAlpacaAccounts(false);
+    }
+  };
+
+  const createSandboxAccount = async () => {
+    try {
+      setCreatingSandboxAccount(true);
+      setError("");
+      setMessage("");
+      setAlpacaNotice("");
+      const response = await apiFetch("/api/trading/alpaca/sandbox-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 30000,
+      });
+      if (response.ok) {
+        setSelectedAlpacaAccount(response.selected || { selectedAccountId: response.selectedAccountId });
+        await loadTrading();
+        await loadAlpacaAccounts();
+        setMessage(response.message || "Created sandbox Alpaca account.");
+      } else {
+        setAlpacaNotice(response.message || "Could not create sandbox Alpaca account.");
+      }
+    } catch (err) {
+      setAlpacaNotice(err?.message || "Could not create sandbox Alpaca account.");
+    } finally {
+      setCreatingSandboxAccount(false);
+    }
+  };
+
+  const fundSandboxAccount = async () => {
+    try {
+      setFundingSandboxAccount(true);
+      setError("");
+      setMessage("");
+      setAlpacaNotice("");
+      const response = await apiFetch("/api/trading/alpaca/sandbox-funding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: 1000 }),
+        timeoutMs: 30000,
+      });
+      if (response.ok) {
+        await loadTrading();
+        setMessage(response.message || "Requested sandbox account funding.");
+      } else {
+        setAlpacaNotice(response.message || "Could not fund sandbox Alpaca account.");
+      }
+    } catch (err) {
+      setAlpacaNotice(err?.message || "Could not fund sandbox Alpaca account.");
+    } finally {
+      setFundingSandboxAccount(false);
     }
   };
 
@@ -263,11 +341,17 @@ const TradingPage = () => {
     status?.orderSubmissionEnabled ?? (!status || status.provider === "paper" ? Boolean(status?.enabled && status?.supportedMode) : false);
   const disabled = !orderSubmissionEnabled || submitting;
   const selectedAlpacaId = selectedAlpacaAccount?.selectedAccountId || "";
+  const brokerIsSandbox = status?.brokerIsSandbox !== false;
+  const pendingSubmitNotional = pendingSubmit
+    ? Number(pendingSubmit.qty) * Number(pendingSubmit.type === "limit" ? pendingSubmit.limitPrice : pendingSubmit.estimatedPrice)
+    : 0;
   const submitLabel =
     status?.provider === "alpaca_broker"
       ? status?.orderSubmissionLocked
         ? "Broker Orders Locked"
-        : "Submit Alpaca Sandbox Order"
+        : status?.liveTradingAvailable
+          ? "Submit Alpaca Live Order"
+          : "Submit Alpaca Broker Order"
       : "Submit Paper Order";
   const backendEnvKeys = envDiagnostics?.envFiles?.backend?.keys || {};
   const runtimeEnv = envDiagnostics?.runtime || {};
@@ -293,7 +377,7 @@ const TradingPage = () => {
             <h2>Trading</h2>
             <p>
               Provider-based order entry separated from scanner signals. Paper is the default;
-              Alpaca Broker sandbox can be enabled from backend config.
+              Alpaca Broker routing can be enabled from backend config.
             </p>
           </div>
           <div className="trading-badges">
@@ -302,6 +386,9 @@ const TradingPage = () => {
             </span>
             <span>
               Status <strong>{status?.enabled ? "Enabled" : "Disabled"}</strong>
+            </span>
+            <span>
+              Env <strong>{status?.brokerEnvironment || "paper"}</strong>
             </span>
             <button type="button" onClick={loadTrading} disabled={loading}>
               {loading ? "Refreshing" : "Refresh"}
@@ -360,12 +447,20 @@ const TradingPage = () => {
           </div>
         </div>
 
+        {marketClock && (
+          <div className={marketClock.isOpen ? "trading-note" : "trading-warning"}>
+            Market clock: {marketClock.isOpen ? "open" : "closed"}
+            {marketClock.nextOpen ? ` / next open ${new Date(marketClock.nextOpen).toLocaleString()}` : ""}
+            {marketClock.nextClose ? ` / next close ${new Date(marketClock.nextClose).toLocaleString()}` : ""}
+          </div>
+        )}
+
         <section className="trading-panel">
           <div className="trading-panel-header trading-panel-header--actions">
             <div>
               <h3>Alpaca Account Discovery</h3>
               <p>
-                Read-only sandbox account lookup for selecting the account ID used by order routing.
+                Read-only broker account lookup for selecting the account ID used by order routing.
                 {selectedAlpacaId ? ` Selected: ${selectedAlpacaId}` : " No account selected."}
               </p>
             </div>
@@ -378,6 +473,26 @@ const TradingPage = () => {
               <button type="button" className="trading-secondary-btn" onClick={checkAlpacaEnv} disabled={checkingAlpacaEnv}>
                 {checkingAlpacaEnv ? "Checking" : "Check Env"}
               </button>
+              {brokerIsSandbox && (
+                <button
+                  type="button"
+                  className="trading-secondary-btn"
+                  onClick={createSandboxAccount}
+                  disabled={creatingSandboxAccount}
+                >
+                  {creatingSandboxAccount ? "Creating" : "Create Sandbox Account"}
+                </button>
+              )}
+              {brokerIsSandbox && (
+                <button
+                  type="button"
+                  className="trading-secondary-btn"
+                  onClick={fundSandboxAccount}
+                  disabled={fundingSandboxAccount || !selectedAlpacaId}
+                >
+                  {fundingSandboxAccount ? "Funding" : "Fund Sandbox"}
+                </button>
+              )}
               <button type="button" className="trading-secondary-btn" onClick={loadAlpacaAccounts} disabled={loadingAlpacaAccounts}>
                 {loadingAlpacaAccounts ? "Loading" : "Load Accounts"}
               </button>
@@ -523,6 +638,12 @@ const TradingPage = () => {
                 <span>Estimated Notional</span>
                 <strong>{money(estimatedNotional)}</strong>
               </div>
+              {status?.riskControls && (
+                <div className="trading-review">
+                  <span>Max Notional</span>
+                  <strong>{money(status.riskControls.maxOrderNotional)}</strong>
+                </div>
+              )}
               {orderPreview && (
                 <div className="trading-preview-box">
                   <div>
@@ -556,7 +677,7 @@ const TradingPage = () => {
             <div className="trading-panel-header">
               <div>
                 <h3>Positions</h3>
-                <p>Paper positions maintained by the execution layer.</p>
+                <p>Positions maintained by the selected execution provider.</p>
               </div>
             </div>
             <div className="trading-table-wrap">
@@ -591,11 +712,14 @@ const TradingPage = () => {
         </div>
 
         <section className="trading-panel">
-          <div className="trading-panel-header">
+          <div className="trading-panel-header trading-panel-header--actions">
             <div>
               <h3>Recent Orders</h3>
-              <p>Audit-friendly order history from the paper store.</p>
+              <p>Order history from the selected execution provider.</p>
             </div>
+            <button type="button" className="trading-secondary-btn" onClick={loadTrading} disabled={loading}>
+              {loading ? "Refreshing" : "Refresh Orders"}
+            </button>
           </div>
           <div className="trading-table-wrap">
             <table className="trading-table">
@@ -640,7 +764,95 @@ const TradingPage = () => {
             </table>
           </div>
         </section>
+
+        <section className="trading-panel">
+          <div className="trading-panel-header trading-panel-header--actions">
+            <div>
+              <h3>Audit Log</h3>
+              <p>Recent preview, submit, and cancel decisions recorded by the backend.</p>
+            </div>
+            <button type="button" className="trading-secondary-btn" onClick={loadTrading} disabled={loading}>
+              {loading ? "Refreshing" : "Refresh Audit"}
+            </button>
+          </div>
+          <div className="trading-table-wrap">
+            <table className="trading-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Action</th>
+                  <th>Outcome</th>
+                  <th>Symbol</th>
+                  <th>Notional</th>
+                  <th>Broker Status</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLog.length === 0 ? (
+                  <tr>
+                    <td colSpan="7">No audit events recorded.</td>
+                  </tr>
+                ) : (
+                  auditLog.map((event) => (
+                    <tr key={event.id}>
+                      <td>{event.at ? new Date(event.at).toLocaleString() : "-"}</td>
+                      <td>{event.action}</td>
+                      <td>{event.outcome}</td>
+                      <td>{event.symbol || "-"}</td>
+                      <td>{money(event.estimatedNotional)}</td>
+                      <td>{event.brokerStatus || "-"}</td>
+                      <td className="trading-audit-error">{event.error || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
+
+      {pendingSubmit && (
+        <div className="trading-modal-backdrop" role="presentation">
+          <div className="trading-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="trading-confirm-title">
+            <h3 id="trading-confirm-title">Confirm Order</h3>
+            <div className="trading-confirm-grid">
+              <div>
+                <span>Symbol</span>
+                <strong>{pendingSubmit.symbol}</strong>
+              </div>
+              <div>
+                <span>Side</span>
+                <strong>{pendingSubmit.side}</strong>
+              </div>
+              <div>
+                <span>Type</span>
+                <strong>{pendingSubmit.type}</strong>
+              </div>
+              <div>
+                <span>Qty</span>
+                <strong>{qty(pendingSubmit.qty)}</strong>
+              </div>
+              <div>
+                <span>Notional</span>
+                <strong>{money(pendingSubmitNotional)}</strong>
+              </div>
+              <div>
+                <span>Route</span>
+                <strong>{status?.provider || "paper"}</strong>
+              </div>
+            </div>
+            <div className="trading-ticket-actions">
+              <button type="button" className="trading-secondary-action-btn" onClick={() => setPendingSubmit(null)} disabled={submitting}>
+                Cancel
+              </button>
+              <button type="button" className="trading-primary-action-btn" onClick={confirmSubmitOrder} disabled={submitting}>
+                {submitting ? "Submitting" : "Confirm Submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

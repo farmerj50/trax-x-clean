@@ -74,6 +74,29 @@ def alpaca_account(account_id):
         return _error_response(exc, 500)
 
 
+@trading_bp.route("/api/trading/alpaca/sandbox-account", methods=["POST"])
+def create_sandbox_alpaca_account():
+    try:
+        return jsonify(service.create_sandbox_alpaca_account()), 201
+    except (TradingProviderError, AlpacaBrokerError) as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        return _error_response(exc, 500)
+
+
+@trading_bp.route("/api/trading/alpaca/sandbox-funding", methods=["POST"])
+def fund_sandbox_alpaca_account():
+    try:
+        payload = request.get_json(silent=True) or {}
+        return jsonify(service.fund_sandbox_alpaca_account(payload)), 201
+    except (TradingProviderError, AlpacaBrokerError) as exc:
+        return _error_response(exc)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc, 500)
+
+
 @trading_bp.route("/api/trading/alpaca/selected-account", methods=["GET"])
 def get_selected_alpaca_account():
     try:
@@ -138,11 +161,35 @@ def trading_orders():
         return _error_response(exc, 500)
 
 
+@trading_bp.route("/api/trading/audit-log", methods=["GET"])
+def trading_audit_log():
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+    try:
+        return jsonify(service.get_audit_log(limit=limit)), 200
+    except Exception as exc:
+        return _error_response(exc, 500)
+
+
+@trading_bp.route("/api/trading/market-clock", methods=["GET"])
+def trading_market_clock():
+    try:
+        return jsonify(service.get_market_clock()), 200
+    except (TradingProviderError, AlpacaBrokerError) as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        return _error_response(exc, 500)
+
+
 @trading_bp.route("/api/trading/orders/preview", methods=["POST"])
 def preview_trading_order():
     try:
         payload = request.get_json(silent=True) or {}
         return jsonify(service.preview_order(payload)), 200
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
     except (TradingProviderError, AlpacaBrokerError) as exc:
         return _error_response(exc)
     except ValueError as exc:

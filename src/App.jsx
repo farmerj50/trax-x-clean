@@ -16,6 +16,7 @@ import PremarketIntelligencePage from "./components/PremarketIntelligencePage";
 import SocialTrackerPage from "./components/SocialTrackerPage";
 import TradingPage from "./components/TradingPage";
 import GlobalAlertContactBar from "./components/GlobalAlertContactBar";
+import AuthGate from "./components/AuthGate";
 import { apiFetch } from "./apiClient";
 import "./App.css";
 
@@ -93,6 +94,9 @@ const App = () => {
 
   return (
     <Router>
+      <AuthGate>
+        {({ user, logout, changePassword }) => (
+          <>
       <div className={`menu-bar ${theme}`}>
         <h1 className="menu-title">AI Stock Scanner</h1>
         <div className="menu-buttons">
@@ -130,6 +134,8 @@ const App = () => {
           <Link to="/social-tracker"><button>Social</button></Link>
           <Link to="/short-sales"><button>Short Sales</button></Link>
           <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Light Mode" : "Dark Mode"}</button>
+          <button type="button" onClick={changePassword}>Change Password</button>
+          <button type="button" onClick={logout}>Logout {user?.username ? `(${user.username})` : ""}</button>
         </div>
       </div>
 
@@ -184,6 +190,9 @@ const App = () => {
         <Route path="/biggest-gains" element={<BiggestGainsPage />} />
         <Route path="/premarket-intelligence" element={<PremarketIntelligencePage theme={theme} />} />
       </Routes>
+          </>
+        )}
+      </AuthGate>
     </Router>
   );
 };

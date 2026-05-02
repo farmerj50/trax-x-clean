@@ -29,6 +29,7 @@ def _default_state() -> dict[str, Any]:
         "buyingPower": starting_cash,
         "positions": {},
         "orders": [],
+        "auditLog": [],
         "brokerAccounts": {
             "alpaca": {
                 "selectedAccountId": "",
@@ -59,6 +60,8 @@ def load_state() -> dict[str, Any]:
         state["positions"] = {}
     if not isinstance(state.get("orders"), list):
         state["orders"] = []
+    if not isinstance(state.get("auditLog"), list):
+        state["auditLog"] = []
     if not isinstance(state.get("brokerAccounts"), dict):
         state["brokerAccounts"] = {"alpaca": {"selectedAccountId": "", "selectedAt": None}}
     if not isinstance(state["brokerAccounts"].get("alpaca"), dict):

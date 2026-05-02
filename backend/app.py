@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 from flask_cors import CORS
 import requests
 import os
@@ -60,6 +60,8 @@ from routes.alert_contacts import alert_contacts_bp
 from routes.premarket_intelligence import premarket_intelligence_bp
 from routes.social_tracker import social_tracker_bp
 from routes.trading import trading_bp
+from routes.auth import auth_bp
+from auth_layer import service as auth_service
 from utils.three_day_breakouts import generate_three_day_breakouts
 from utils.volatility_contraction_breakout import generate_volatility_contraction_breakouts
 from utils.ai_picks import alert_priority, calculate_ai_pick_score
@@ -81,7 +83,26 @@ except Exception:
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True, origins=list(config.AUTH_ALLOWED_ORIGINS))
+
+
+@app.before_request
+def require_authenticated_user():
+    try:
+        auth_service.validate_request_origin(request)
+    except auth_service.AuthError as exc:
+        return jsonify({"error": str(exc), "authenticated": False}), exc.status_code
+
+    if auth_service.is_public_path(request.path, request.method):
+        return None
+    try:
+        session = auth_service.get_session(auth_service.get_token_from_request(request))
+    except auth_service.AuthError as exc:
+        return jsonify({"error": str(exc), "authenticated": False}), exc.status_code
+    if not session:
+        return jsonify({"error": "Authentication required.", "authenticated": False}), 401
+    g.current_user = session["user"]
+    return None
 
 
 @app.route("/health", methods=["GET"])
@@ -152,6 +173,7 @@ def _dispatch_crypto_signal_alert(signal: dict) -> None:
         logging.warning(f"Crypto alert dispatch failed: {exc}")
 
 # then later when setting up app
+app.register_blueprint(auth_bp)
 app.register_blueprint(next_day_picks_bp)
 app.register_blueprint(options_bp)
 app.register_blueprint(alert_contacts_bp)

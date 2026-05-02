@@ -27,6 +27,26 @@ const formatMoney = (value) => {
   return `$${number.toFixed(0)}`;
 };
 
+const formatTradeMoney = (value) => {
+  if (value === "" || value === null || value === undefined) return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `$${number.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const parsePositiveNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+};
+
+const firstPositive = (...values) => {
+  for (const value of values) {
+    const number = parsePositiveNumber(value);
+    if (number > 0) return number;
+  }
+  return 0;
+};
+
 const formatPressureState = (value) => {
   const normalized = String(value || "").replace(/_/g, " ").trim();
   if (!normalized) return "early watch";
@@ -201,6 +221,220 @@ const ScoreBreakdown = ({ breakdown }) => {
         </div>
       ))}
     </div>
+  );
+};
+
+const getSuggestedTradePrices = (stock, side) => {
+  const price = firstPositive(
+    stock?.premarketPrice,
+    stock?.price,
+    stock?.lastPrice,
+    stock?.close,
+    stock?.previousClose
+  );
+  const high = firstPositive(stock?.premarketHigh, price);
+  const low = firstPositive(stock?.premarketLow, price ? price * 0.97 : 0);
+
+  if (side === "short") {
+    const entry = low || price;
+    const stop = high > entry ? high : entry * 1.03;
+    return { entry, stop };
+  }
+
+  const entry = high || price;
+  const stop = low > 0 && low < entry ? low : entry * 0.97;
+  return { entry, stop };
+};
+
+const TradeRiskCalculator = ({ selectedStock }) => {
+  const [calculator, setCalculator] = useState({
+    accountSize: "10000",
+    riskPercent: "1",
+    side: "long",
+    entryPrice: "",
+    stopPrice: "",
+    rewardMultiple: "2",
+  });
+
+  const symbol = selectedStock?.ticker || "Selected ticker";
+
+  const updateCalculator = (key, value) => {
+    setCalculator((current) => ({ ...current, [key]: value }));
+  };
+
+  const applySelectedSetupPrices = () => {
+    if (!selectedStock) return;
+    const { entry, stop } = getSuggestedTradePrices(selectedStock, calculator.side);
+    setCalculator((current) => ({
+      ...current,
+      entryPrice: entry ? entry.toFixed(2) : current.entryPrice,
+      stopPrice: stop ? stop.toFixed(2) : current.stopPrice,
+    }));
+  };
+
+  const result = useMemo(() => {
+    const accountSize = parsePositiveNumber(calculator.accountSize);
+    const riskPercent = parsePositiveNumber(calculator.riskPercent);
+    const entryPrice = parsePositiveNumber(calculator.entryPrice);
+    const stopPrice = parsePositiveNumber(calculator.stopPrice);
+    const rewardMultiple = parsePositiveNumber(calculator.rewardMultiple);
+    const isShort = calculator.side === "short";
+    const riskPerShare = isShort ? stopPrice - entryPrice : entryPrice - stopPrice;
+    const riskBudget = accountSize * (riskPercent / 100);
+
+    if (!accountSize || !riskPercent || !entryPrice || !stopPrice || !rewardMultiple || riskPerShare <= 0) {
+      return {
+        valid: false,
+        riskBudget,
+        riskPerShare,
+        shares: 0,
+        positionValue: 0,
+        stopExit: stopPrice,
+        targetExit: 0,
+        maxLoss: 0,
+        potentialGain: 0,
+      };
+    }
+
+    const shares = Math.floor(riskBudget / riskPerShare);
+    const positionValue = shares * entryPrice;
+    const targetExit = isShort
+      ? entryPrice - riskPerShare * rewardMultiple
+      : entryPrice + riskPerShare * rewardMultiple;
+    const maxLoss = shares * riskPerShare;
+    const potentialGain = shares * Math.abs(targetExit - entryPrice);
+
+    return {
+      valid: shares > 0,
+      riskBudget,
+      riskPerShare,
+      shares,
+      positionValue,
+      stopExit: stopPrice,
+      targetExit,
+      maxLoss,
+      potentialGain,
+    };
+  }, [calculator]);
+
+  return (
+    <section className="risk-calculator-panel">
+      <div className="premarket-heatmap-header">
+        <div>
+          <h3 className="panel-title" style={{ marginBottom: "6px" }}>Entry / Exit Calculator</h3>
+          <div className="panel-subtitle">Position size based on account value, risk percent, entry, and stop.</div>
+        </div>
+        <div className="top-badges">
+          <span className="premarket-mini-chip">{symbol}</span>
+          <button className="btn-secondary risk-use-selected" type="button" onClick={applySelectedSetupPrices} disabled={!selectedStock}>
+            Use selected setup
+          </button>
+        </div>
+      </div>
+
+      <div className="risk-calculator-grid">
+        <div className="risk-inputs">
+          <label className="risk-field">
+            <span>Account Size</span>
+            <input
+              type="number"
+              min="0"
+              step="100"
+              value={calculator.accountSize}
+              onChange={(event) => updateCalculator("accountSize", event.target.value)}
+            />
+          </label>
+          <label className="risk-field">
+            <span>Risk %</span>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={calculator.riskPercent}
+              onChange={(event) => updateCalculator("riskPercent", event.target.value)}
+            />
+          </label>
+          <label className="risk-field">
+            <span>Side</span>
+            <select value={calculator.side} onChange={(event) => updateCalculator("side", event.target.value)}>
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+            </select>
+          </label>
+          <label className="risk-field">
+            <span>Entry Price</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={calculator.entryPrice}
+              onChange={(event) => updateCalculator("entryPrice", event.target.value)}
+            />
+          </label>
+          <label className="risk-field">
+            <span>Stop Exit</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={calculator.stopPrice}
+              onChange={(event) => updateCalculator("stopPrice", event.target.value)}
+            />
+          </label>
+          <label className="risk-field">
+            <span>Reward/Risk</span>
+            <input
+              type="number"
+              min="0"
+              step="0.25"
+              value={calculator.rewardMultiple}
+              onChange={(event) => updateCalculator("rewardMultiple", event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="risk-results">
+          <div className="risk-result-card risk-result-card-primary">
+            <span>Shares</span>
+            <strong>{result.valid ? result.shares.toLocaleString() : "-"}</strong>
+          </div>
+          <div className="risk-result-card">
+            <span>Entry</span>
+            <strong>{formatTradeMoney(calculator.entryPrice)}</strong>
+          </div>
+          <div className="risk-result-card">
+            <span>Stop Exit</span>
+            <strong>{result.stopExit > 0 ? formatTradeMoney(result.stopExit) : "-"}</strong>
+          </div>
+          <div className="risk-result-card">
+            <span>Target Exit</span>
+            <strong>{result.valid ? formatTradeMoney(result.targetExit) : "-"}</strong>
+          </div>
+          <div className="risk-result-card">
+            <span>Position Value</span>
+            <strong>{result.valid ? formatTradeMoney(result.positionValue) : "-"}</strong>
+          </div>
+          <div className="risk-result-card">
+            <span>Max Risk</span>
+            <strong>{result.valid ? formatTradeMoney(result.maxLoss) : result.riskBudget > 0 ? formatTradeMoney(result.riskBudget) : "-"}</strong>
+          </div>
+          <div className="risk-result-card">
+            <span>Risk / Share</span>
+            <strong>{result.riskPerShare > 0 ? formatTradeMoney(result.riskPerShare) : "-"}</strong>
+          </div>
+          <div className="risk-result-card">
+            <span>Potential Gain</span>
+            <strong>{result.valid ? formatTradeMoney(result.potentialGain) : "-"}</strong>
+          </div>
+        </div>
+      </div>
+
+      {!result.valid ? (
+        <div className="risk-calculator-note">
+          Enter an account size, risk percent, entry, stop, and reward/risk. For long trades, stop must be below entry. For short trades, stop must be above entry.
+        </div>
+      ) : null}
+    </section>
   );
 };
 
@@ -517,6 +751,8 @@ const PremarketIntelligencePage = () => {
                 <div className="summary-value">{Number(payload.marketSummary?.earlySetupCount || 0)}</div>
               </div>
             </div>
+
+            <TradeRiskCalculator selectedStock={selectedStock} />
 
             {payload.earlySetupWatch?.length ? (
               <div className="early-watch-panel" style={{ marginTop: "18px" }}>

@@ -102,6 +102,38 @@ TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "").strip()
 ALERT_EVENT_LOG_PATH = LOG_DIR / "alert_event_log.json"
 ALERT_EVENT_COOLDOWN_MINUTES = int(os.getenv("ALERT_EVENT_COOLDOWN_MINUTES", "180"))
 
+# App authentication layer
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+AUTH_STATE_PATH = LOG_DIR / "auth_state.json"
+AUTH_SESSION_COOKIE = os.getenv("AUTH_SESSION_COOKIE", "trax_x_session").strip() or "trax_x_session"
+AUTH_SESSION_TTL_HOURS = float(os.getenv("AUTH_SESSION_TTL_HOURS", "12"))
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
+AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax").strip() or "Lax"
+AUTH_MIN_PASSWORD_LENGTH = int(os.getenv("AUTH_MIN_PASSWORD_LENGTH", "12"))
+AUTH_LOGIN_MAX_ATTEMPTS = int(os.getenv("AUTH_LOGIN_MAX_ATTEMPTS", "5"))
+AUTH_LOGIN_WINDOW_SECONDS = int(os.getenv("AUTH_LOGIN_WINDOW_SECONDS", "300"))
+AUTH_ALLOWED_ORIGINS = tuple(
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "AUTH_ALLOWED_ORIGINS",
+        ",".join(
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
+                "http://localhost:3002",
+                "http://127.0.0.1:3002",
+                "http://localhost:5000",
+                "http://127.0.0.1:5000",
+                "https://trax-x-clean-production.up.railway.app",
+                "https://keen-hope-production-4a15.up.railway.app",
+            ]
+        ),
+    ).split(",")
+    if origin.strip()
+)
+
 # Trading execution layer
 ENABLE_TRADING = os.getenv("ENABLE_TRADING", "false").strip().lower() in {"1", "true", "yes", "on"}
 TRADING_PROVIDER = os.getenv("TRADING_PROVIDER", "paper").strip().lower() or "paper"
@@ -109,16 +141,34 @@ TRADING_MODE = os.getenv("TRADING_MODE", "paper").strip().lower() or "paper"
 TRADING_STATE_PATH = LOG_DIR / "trading_state.json"
 TRADING_STARTING_CASH = float(os.getenv("TRADING_STARTING_CASH", "100000"))
 TRADING_PAPER_AUTO_FILL = os.getenv("TRADING_PAPER_AUTO_FILL", "true").strip().lower() in {"1", "true", "yes", "on"}
+TRADING_MAX_ORDER_NOTIONAL = float(os.getenv("TRADING_MAX_ORDER_NOTIONAL", "100"))
+TRADING_MAX_ORDER_QTY = float(os.getenv("TRADING_MAX_ORDER_QTY", "100"))
+TRADING_ALLOWED_SYMBOLS = tuple(
+    symbol.strip().upper()
+    for symbol in os.getenv("TRADING_ALLOWED_SYMBOLS", "").split(",")
+    if symbol.strip()
+)
+TRADING_ALLOW_SHORT_SELLS = os.getenv("TRADING_ALLOW_SHORT_SELLS", "false").strip().lower() in {"1", "true", "yes", "on"}
+TRADING_REQUIRE_MARKET_OPEN = os.getenv("TRADING_REQUIRE_MARKET_OPEN", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # Alpaca Broker API. Keep these backend-only.
 ALPACA_BROKER_ENV = os.getenv("ALPACA_BROKER_ENV", "sandbox").strip().lower() or "sandbox"
+ALPACA_BROKER_IS_SANDBOX = ALPACA_BROKER_ENV == "sandbox"
 ALPACA_BROKER_API_BASE = os.getenv(
     "ALPACA_BROKER_API_BASE",
-    "https://broker-api.sandbox.alpaca.markets",
-).strip()
+    "https://broker-api.sandbox.alpaca.markets"
+    if ALPACA_BROKER_IS_SANDBOX
+    else "https://broker-api.alpaca.markets",
+).strip().rstrip("/")
+ALPACA_BROKER_AUTH_MODE = os.getenv("ALPACA_BROKER_AUTH_MODE", "client_credentials").strip().lower() or "client_credentials"
+ALPACA_BROKER_AUTH_BASE = os.getenv(
+    "ALPACA_BROKER_AUTH_BASE",
+    "https://authx.sandbox.alpaca.markets" if ALPACA_BROKER_IS_SANDBOX else "https://authx.alpaca.markets",
+).strip().rstrip("/")
 ALPACA_BROKER_API_KEY = os.getenv("ALPACA_BROKER_API_KEY", "").strip()
 ALPACA_BROKER_API_SECRET = os.getenv("ALPACA_BROKER_API_SECRET", "").strip()
 ALPACA_BROKER_ENABLED = os.getenv("ALPACA_BROKER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 ALPACA_BROKER_ACCOUNT_ID = os.getenv("ALPACA_BROKER_ACCOUNT_ID", "").strip()
+ALPACA_BROKER_FIRM_ACCOUNT_NUMBER = os.getenv("ALPACA_BROKER_FIRM_ACCOUNT_NUMBER", "").strip()
 ALPACA_BROKER_TIMEOUT_SECONDS = float(os.getenv("ALPACA_BROKER_TIMEOUT_SECONDS", "15"))
 ALPACA_BROKER_ALLOW_ORDERS = os.getenv("ALPACA_BROKER_ALLOW_ORDERS", "false").strip().lower() in {"1", "true", "yes", "on"}
