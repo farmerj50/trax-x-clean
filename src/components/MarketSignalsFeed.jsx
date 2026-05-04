@@ -4,6 +4,8 @@ import { io } from "socket.io-client";
 import { SOCKET_BASE, apiFetch } from "../apiClient";
 
 const AI_ALERT_SETTINGS_KEY = "aiAlertSettings";
+const SCAN_REQUEST_TIMEOUT_MS = 60000;
+const AI_PICKS_TIMEOUT_MS = 60000;
 
 const formatNotional = (value) => {
   if (!Number.isFinite(value)) return "-";
@@ -51,17 +53,21 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
   const [lastLoadCount, setLastLoadCount] = useState(0);
   const [targets, setTargets] = useState([]);
   const [targetsFallbackMessage, setTargetsFallbackMessage] = useState("");
+  const [targetsError, setTargetsError] = useState("");
   const [nearMisses, setNearMisses] = useState([]);
   const [failureSummary, setFailureSummary] = useState([]);
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [preTargets, setPreTargets] = useState([]);
+  const [preTargetsError, setPreTargetsError] = useState("");
   const [preFailureSummary, setPreFailureSummary] = useState([]);
   const [loadingPreTargets, setLoadingPreTargets] = useState(false);
   const [pennyTargets, setPennyTargets] = useState([]);
+  const [pennyTargetsError, setPennyTargetsError] = useState("");
   const [pennyFailureSummary, setPennyFailureSummary] = useState([]);
   const [loadingPennyTargets, setLoadingPennyTargets] = useState(false);
   const [pennyNews, setPennyNews] = useState({});
   const [volatilityTargets, setVolatilityTargets] = useState([]);
+  const [volatilityTargetsError, setVolatilityTargetsError] = useState("");
   const [loadingVolatilityTargets, setLoadingVolatilityTargets] = useState(false);
   const [aiPicks, setAiPicks] = useState([]);
   const [loadingAiPicks, setLoadingAiPicks] = useState(false);
@@ -103,6 +109,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
     try {
       setLoadingTargets(true);
       setTargetsFallbackMessage("");
+      setTargetsError("");
       const params = new URLSearchParams({
         mode,
         limit: "20",
@@ -116,7 +123,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         require_vwap: String(requireVwap),
         qualified_only: String(qualifiedOnly),
       });
-      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
+      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`, { timeoutMs: SCAN_REQUEST_TIMEOUT_MS });
       const loadedTargets = Array.isArray(data?.targets) ? data.targets : [];
       setTargets(loadedTargets);
       setFailureSummary(Array.isArray(data?.debug?.failure_counts) ? data.debug.failure_counts : []);
@@ -125,7 +132,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
       if (qualifiedOnly && loadedTargets.length <= 1) {
         const fallbackParams = new URLSearchParams(params);
         fallbackParams.set("qualified_only", "false");
-        const fallbackData = await apiFetch(`/api/market-signals/qualified-targets?${fallbackParams}`);
+        const fallbackData = await apiFetch(`/api/market-signals/qualified-targets?${fallbackParams}`, { timeoutMs: SCAN_REQUEST_TIMEOUT_MS });
         const misses = (Array.isArray(fallbackData?.targets) ? fallbackData.targets : [])
           .filter((item) => !item.qualified)
           .slice(0, 8);
@@ -140,6 +147,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
     } catch (error) {
       setTargets([]);
       setTargetsFallbackMessage("");
+      setTargetsError(String(error?.message || "Qualified targets unavailable"));
       setFailureSummary([]);
       setNearMisses([]);
     } finally {
@@ -150,6 +158,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
   const loadPreBreakoutTargets = async () => {
     try {
       setLoadingPreTargets(true);
+      setPreTargetsError("");
       const params = new URLSearchParams({
         mode: "pre_breakout",
         limit: "20",
@@ -164,11 +173,12 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         require_vwap: String(requireVwap),
         qualified_only: "false", // show A/B/watch even if not fully qualified
       });
-      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
+      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`, { timeoutMs: SCAN_REQUEST_TIMEOUT_MS });
       setPreTargets(Array.isArray(data?.targets) ? data.targets : []);
       setPreFailureSummary(Array.isArray(data?.debug?.failure_counts) ? data.debug.failure_counts : []);
     } catch (error) {
       setPreTargets([]);
+      setPreTargetsError(String(error?.message || "Pre-breakout scan unavailable"));
       setPreFailureSummary([]);
     } finally {
       setLoadingPreTargets(false);
@@ -178,6 +188,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
   const loadPennyTargets = async () => {
     try {
       setLoadingPennyTargets(true);
+      setPennyTargetsError("");
       setPennyNews({});
       const params = new URLSearchParams({
         mode: "breakout",
@@ -192,7 +203,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         qualified_only: "false",
         pool_limit: "600",
       });
-      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`);
+      const data = await apiFetch(`/api/market-signals/qualified-targets?${params}`, { timeoutMs: SCAN_REQUEST_TIMEOUT_MS });
       const loadedTargets = Array.isArray(data?.targets) ? data.targets.slice(0, 12) : [];
       setPennyTargets(loadedTargets);
       setPennyFailureSummary(Array.isArray(data?.debug?.failure_counts) ? data.debug.failure_counts : []);
@@ -203,6 +214,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
       }
     } catch (error) {
       setPennyTargets([]);
+      setPennyTargetsError(String(error?.message || "Penny movers unavailable"));
       setPennyFailureSummary([]);
       setPennyNews({});
     } finally {
@@ -213,6 +225,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
   const loadVolatilityTargets = async () => {
     try {
       setLoadingVolatilityTargets(true);
+      setVolatilityTargetsError("");
       const params = new URLSearchParams({
         universe_limit: "300",
         min_price: "0.5",
@@ -221,10 +234,11 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         min_day_change_pct: "8",
         min_rvol: "2",
       });
-      const data = await apiFetch(`/api/volatility-contraction-breakouts?${params}`);
+      const data = await apiFetch(`/api/volatility-contraction-breakouts?${params}`, { timeoutMs: SCAN_REQUEST_TIMEOUT_MS });
       setVolatilityTargets(Array.isArray(data?.candidates) ? data.candidates.slice(0, 12) : []);
     } catch (error) {
       setVolatilityTargets([]);
+      setVolatilityTargetsError(String(error?.message || "VCB scan unavailable"));
     } finally {
       setLoadingVolatilityTargets(false);
     }
@@ -243,7 +257,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         near_min_score: String(aiNearMinScore),
         near_distance_pct: String(aiNearDistancePct),
       });
-      const data = await apiFetch(`/api/ai-picks?${params}`, { timeoutMs: 35000 });
+      const data = await apiFetch(`/api/ai-picks?${params}`, { timeoutMs: AI_PICKS_TIMEOUT_MS });
       setAiPicks(Array.isArray(data?.picks) ? data.picks : []);
       setAiPicksGeneratedAt(String(data?.generated_at || ""));
       setAiPicksDebug(data?.debug && typeof data.debug === "object" ? data.debug : null);
@@ -354,9 +368,12 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
     loadRecent();
     loadAiPicks();
     loadQualifiedTargets();
-    loadPreBreakoutTargets();
-    loadPennyTargets();
-    loadVolatilityTargets();
+    const timers = [
+      setTimeout(() => loadPreBreakoutTargets(), 1500),
+      setTimeout(() => loadPennyTargets(), 3000),
+      setTimeout(() => loadVolatilityTargets(), 4500),
+    ];
+    return () => timers.forEach((timer) => clearTimeout(timer));
   }, []);
 
   useEffect(() => {
@@ -636,7 +653,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         )}
         {targets.length === 0 ? (
           <div style={{ color: "#9ca3af", border: "1px dashed #334155", borderRadius: "10px", padding: "14px" }}>
-            <p style={{ margin: 0 }}>No targets matched current filters.</p>
+            <p style={{ margin: 0 }}>{targetsError || "No targets matched current filters."}</p>
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(220px, 1fr))", gap: "16px" }}>
@@ -792,7 +809,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
       {loadingPennyTargets && <p style={{ margin: "0 0 6px 0", color: "#9ca3af", fontSize: "12px" }}>Scanning penny movers...</p>}
       {pennyTargets.length === 0 ? (
         <div style={{ margin: "0 0 8px 0", color: "#9ca3af" }}>
-          <p style={{ margin: "0 0 4px 0" }}>No penny movers matched current market data.</p>
+          <p style={{ margin: "0 0 4px 0" }}>{pennyTargetsError || "No penny movers matched current market data."}</p>
           {pennyFailureSummary.length > 0 && (
             <p style={{ margin: 0, fontSize: "12px" }}>
               Top failures: {pennyFailureSummary.map((f) => `${f.rule} (${f.count})`).join(" | ")}
@@ -832,7 +849,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         {loadingVolatilityTargets && <p style={{ margin: "0 0 6px 0", color: "#9ca3af", fontSize: "12px" }}>Scanning volatility contractions...</p>}
         {volatilityTargets.length === 0 ? (
           <div style={{ margin: "0 0 8px 0", color: "#9ca3af" }}>
-            <p style={{ margin: "0 0 4px 0" }}>No volatility contraction setups right now.</p>
+            <p style={{ margin: "0 0 4px 0" }}>{volatilityTargetsError || "No volatility contraction setups right now."}</p>
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(180px, 1fr))", gap: "12px" }}>
@@ -864,7 +881,7 @@ const MarketSignalsFeed = ({ selectedTicker, theme = "dark" }) => {
         {loadingPreTargets && <p style={{ margin: "0 0 6px 0", color: "#9ca3af", fontSize: "12px" }}>Scanning pre-breakout setups...</p>}
         {preTargets.length === 0 ? (
           <div style={{ margin: "0 0 8px 0", color: "#9ca3af" }}>
-            <p style={{ margin: "0 0 4px 0" }}>No pre-breakout setups yet.</p>
+            <p style={{ margin: "0 0 4px 0" }}>{preTargetsError || "No pre-breakout setups yet."}</p>
             {preFailureSummary.length > 0 && (
               <p style={{ margin: 0, fontSize: "12px" }}>
                 Top failures: {preFailureSummary.map((f) => `${f.rule} (${f.count})`).join(" | ")}

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 from flask_cors import CORS
 import requests
 import os
@@ -56,10 +56,16 @@ from utils.indicators import preprocess_number_one_strategy
 from utils.indicators import compute_macd
 from routes.next_day_picks import next_day_picks_bp
 from routes.options_routes import options_bp
+from routes.alert_contacts import alert_contacts_bp
 from routes.premarket_intelligence import premarket_intelligence_bp
+from routes.social_tracker import social_tracker_bp
+from routes.trading import trading_bp
+from routes.auth import auth_bp
+from auth_layer import service as auth_service
 from utils.three_day_breakouts import generate_three_day_breakouts
 from utils.volatility_contraction_breakout import generate_volatility_contraction_breakouts
 from utils.ai_picks import alert_priority, calculate_ai_pick_score
+from utils.contact_alerts import dispatch_alert_event
 from utils.signal_engine import SignalEngine
 from utils.market_stream import PolygonMarketStream
 from utils.options_flow import IntrinioOptionsFlowPoller
@@ -77,12 +83,103 @@ except Exception:
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True, origins=list(config.AUTH_ALLOWED_ORIGINS))
+
+
+@app.before_request
+def require_authenticated_user():
+    try:
+        auth_service.validate_request_origin(request)
+    except auth_service.AuthError as exc:
+        return jsonify({"error": str(exc), "authenticated": False}), exc.status_code
+
+    if auth_service.is_public_path(request.path, request.method):
+        return None
+    try:
+        session = auth_service.get_session(auth_service.get_token_from_request(request))
+    except auth_service.AuthError as exc:
+        return jsonify({"error": str(exc), "authenticated": False}), exc.status_code
+    if not session:
+        return jsonify({"error": "Authentication required.", "authenticated": False}), 401
+    g.current_user = session["user"]
+    return None
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "trax-x-backend",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "config": {
+                "market_signals_enabled": bool(config.ENABLE_MARKET_SIGNALS),
+                "options_flow_enabled": bool(config.ENABLE_OPTIONS_FLOW_SIGNALS),
+                "trading_enabled": bool(config.ENABLE_TRADING),
+                "trading_mode": config.TRADING_MODE,
+                "trading_provider": config.TRADING_PROVIDER,
+                "alpaca_broker_enabled": bool(config.ALPACA_BROKER_ENABLED),
+                "polygon_api_key_configured": bool(POLYGON_API_KEY),
+                "alpha_vantage_api_key_configured": bool(ALPHA_VANTAGE_API_KEY),
+            },
+        }
+    ), 200
+
+
+def _dispatch_ai_pick_alerts(picks: list[dict]) -> None:
+    for item in list(picks or [])[:4]:
+        alert = item.get("alert") or {}
+        label = str(alert.get("label") or "").upper()
+        if label not in {"LIVE", "NEAR"}:
+            continue
+        try:
+            dispatch_alert_event(
+                {
+                    "page": "/stocks",
+                    "eventType": "ai_pick",
+                    "symbol": item.get("symbol"),
+                    "label": label,
+                    "instrument": "stock",
+                    "recommendation": ", ".join(item.get("reasons") or []),
+                    "score": item.get("score"),
+                    "price": item.get("price"),
+                    "summary": f"AI pick scored {item.get('score')} with {label} urgency.",
+                }
+            )
+        except Exception as exc:
+            logging.warning(f"AI pick alert dispatch failed: {exc}")
+
+
+def _dispatch_crypto_signal_alert(signal: dict) -> None:
+    score = float(signal.get("score", 0.0) or 0.0)
+    if score < 0.55:
+        return
+    label = "LIVE" if score >= 0.8 else "WATCH"
+    try:
+        dispatch_alert_event(
+            {
+                "page": "/crypto",
+                "eventType": "crypto_signal",
+                "symbol": signal.get("ticker"),
+                "label": label,
+                "instrument": "crypto_spot",
+                "recommendation": signal.get("momentum") or "monitor",
+                "score": score,
+                "price": signal.get("entry"),
+                "summary": signal.get("comment") or "",
+            }
+        )
+    except Exception as exc:
+        logging.warning(f"Crypto alert dispatch failed: {exc}")
 
 # then later when setting up app
+app.register_blueprint(auth_bp)
 app.register_blueprint(next_day_picks_bp)
 app.register_blueprint(options_bp)
+app.register_blueprint(alert_contacts_bp)
 app.register_blueprint(premarket_intelligence_bp)
+app.register_blueprint(social_tracker_bp)
+app.register_blueprint(trading_bp)
 
 MAX_RETRIES = 10  # Increased retries
 WAIT_TIME = 5  # Increased wait time (seconds)
@@ -127,9 +224,11 @@ if lstm_cache["model"] is None or lstm_cache["scaler"] is None:
     if model is not None and scaler is not None:
        lstm_cache["model"], lstm_cache["scaler"] = model, scaler
        print("Loaded saved LSTM model successfully.")
-    else:
-       print("LSTM model or scaler missing. Retraining now...")
+    elif config.ENABLE_LSTM_STARTUP_TRAINING:
+       print("LSTM model or scaler missing. Startup training is enabled; retraining now...")
        lstm_cache["model"], lstm_cache["scaler"] = train_and_cache_lstm_model()
+    else:
+       print("LSTM model or scaler missing. Skipping startup retraining.")
 
 # Fix 'NoneType' object error in logging
 logging.raiseExceptions = False  # Disable logging-related exceptions
@@ -1643,8 +1742,6 @@ def ai_predict(model, filtered_data, scaler):
         logging.info(f"📌 AI Predictions Completed. Top {len(top_candidates)} candidates selected.")
 
         # ✅ Save the Final Selected Stocks for Charting
-        FINAL_AI_CSV_PATH = os.path.join("C:/Users/gabby/trax-x/backend/log_dir", "final_ai_predictions.csv")
-
         try:
             os.makedirs(os.path.dirname(FINAL_AI_CSV_PATH), exist_ok=True)
             top_candidates.to_csv(FINAL_AI_CSV_PATH, index=False)
@@ -1985,6 +2082,7 @@ def crypto_signals():
             "momentum": "up",
             "comment": "Placeholder signal; integrate live scoring for production.",
         }
+        _dispatch_crypto_signal_alert(signals)
         return jsonify({"signals": signals}), 200
     except Exception as e:
         logging.error(f"❌ Error in /api/crypto-signals: {e}", exc_info=True)
@@ -2322,6 +2420,12 @@ def _fetch_polygon_snapshot_rows():
         response.raise_for_status()
         payload = response.json()
     except requests.exceptions.RequestException as exc:
+        detail = str(exc)
+        if "WinError 10013" in detail:
+            raise RuntimeError(
+                "Polygon snapshot request failed because the local backend is blocked from opening outbound connections "
+                "to api.polygon.io:443 (WinError 10013). Check Windows Firewall, antivirus, VPN, or corporate network rules."
+            ) from exc
         raise RuntimeError(f"Polygon snapshot request failed: {exc}") from exc
     return payload.get("tickers", []) or []
 
@@ -3123,6 +3227,7 @@ def ai_picks():
                 "alert_config": alert_config,
             },
         }
+        _dispatch_ai_pick_alerts(response_payload["picks"])
         _scan_route_cache[cache_key] = response_payload
         return jsonify(response_payload), 200
     except RuntimeError as e:

@@ -3,7 +3,12 @@ const normalizeBaseUrl = (value) => {
   return value.trim().replace(/\/+$/, "");
 };
 
-const getRuntimeConfigBase = (key) => {
+const isLocalHostname = (hostname) => {
+  const normalized = String(hostname || "").toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
+};
+
+const getStoredRuntimeConfigBase = (key) => {
   if (typeof window === "undefined") return "";
 
   let storageValue = "";
@@ -13,11 +18,33 @@ const getRuntimeConfigBase = (key) => {
     storageValue = "";
   }
 
+  const normalized = normalizeBaseUrl(storageValue);
+  if (!normalized) return "";
+
+  // In local development, stale persisted remote overrides are a common cause
+  // of "scan won't populate" issues even though the backend on :5000 is healthy.
+  if (isLocalHostname(window.location.hostname)) {
+    try {
+      const parsed = new URL(normalized);
+      if (!isLocalHostname(parsed.hostname)) {
+        return "";
+      }
+    } catch (error) {
+      return "";
+    }
+  }
+
+  return normalized;
+};
+
+const getRuntimeConfigBase = (key) => {
+  if (typeof window === "undefined") return "";
+
   const runtimeValue =
     window.__TRAX_CONFIG__?.[key] ??
     window[`__TRAX_${key}__`] ??
     document.querySelector(`meta[name="trax-${key.toLowerCase().replace(/_/g, "-")}"]`)?.content ??
-    storageValue;
+    getStoredRuntimeConfigBase(key);
 
   return normalizeBaseUrl(runtimeValue);
 };
@@ -25,11 +52,6 @@ const getRuntimeConfigBase = (key) => {
 const toWebSocketBase = (value) => {
   if (!value) return "";
   return value.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:");
-};
-
-const isLocalHostname = (hostname) => {
-  const normalized = String(hostname || "").toLowerCase();
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
 };
 
 const normalizeLocalDevOverride = (value, fallback) => {
@@ -96,6 +118,7 @@ const defaultSocketBase = (() => {
 
 const API_BASE = defaultApiBase;
 const SOCKET_BASE = defaultSocketBase;
+const AUTH_EXPIRED_EVENT = "trax-x-auth-expired";
 
 const buildApiUrl = (path) => {
   if (!path.startsWith("/")) path = `/${path}`;
@@ -129,6 +152,7 @@ const apiFetch = async (path, options = {}) => {
   let response;
   try {
     response = await fetch(buildApiUrl(path), {
+      credentials: "include",
       ...fetchOptions,
       signal: mergeAbortSignals([signal, timeoutController.signal]),
     });
@@ -151,6 +175,13 @@ const apiFetch = async (path, options = {}) => {
 
   if (!response.ok) {
     const bodyPreview = receivedHtml ? "[HTML document returned]" : trimmed.slice(0, 300);
+    if (response.status === 401 && typeof window !== "undefined" && !String(path || "").startsWith("/api/auth/")) {
+      window.dispatchEvent(
+        new CustomEvent(AUTH_EXPIRED_EVENT, {
+          detail: { path, status: response.status },
+        })
+      );
+    }
     throw new Error(`HTTP ${response.status} ${response.statusText} for ${path}: ${bodyPreview}`);
   }
 
@@ -168,11 +199,12 @@ const apiFetch = async (path, options = {}) => {
 };
 
 const exportsObj = {
+  AUTH_EXPIRED_EVENT,
   API_BASE,
   SOCKET_BASE,
   buildApiUrl,
   apiFetch,
 };
 
-export { API_BASE, SOCKET_BASE, buildApiUrl, apiFetch };
+export { AUTH_EXPIRED_EVENT, API_BASE, SOCKET_BASE, buildApiUrl, apiFetch };
 export default exportsObj;
