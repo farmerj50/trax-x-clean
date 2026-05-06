@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../apiClient";
 import "./SocialTrackerPage.css";
-
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 const toCsvList = (value) =>
   String(value || "")
     .split(",")
@@ -110,7 +110,7 @@ const SocialTrackerPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadTracker = async (nextFilters = filters) => {
+  const loadTracker = useCallback(async (nextFilters = filters) => {
     try {
       setLoading(true);
       setError("");
@@ -135,11 +135,11 @@ const SocialTrackerPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
-  useEffect(() => {
-    loadTracker();
-  }, []);
+ useEffect(() => {
+  loadTracker();
+}, [loadTracker]);
 
   const lastUpdated = useMemo(
     () => (payload.timestamp ? new Date(payload.timestamp).toLocaleString() : "Waiting for first refresh"),
