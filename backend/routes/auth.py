@@ -64,6 +64,41 @@ def auth_setup():
         return _error_response(exc, 500)
 
 
+@auth_bp.route("/api/auth/register", methods=["POST"])
+def auth_register():
+    try:
+        payload = request.get_json(silent=True) or {}
+        user = service.create_user(
+            payload.get("username"),
+            payload.get("password"),
+            account_type=payload.get("accountType"),
+            funding_amount=payload.get("fundingAmount"),
+        )
+        session = service.create_session(
+            payload.get("username"),
+            payload.get("password"),
+            user_agent=request.headers.get("User-Agent", ""),
+            remote_addr=request.remote_addr or "",
+        )
+        response = make_response(
+            jsonify(
+                {
+                    "ok": True,
+                    "authenticated": True,
+                    "setupRequired": False,
+                    "user": user,
+                    "sessionExpiresAt": session["expiresAt"],
+                }
+            ),
+            201,
+        )
+        return _set_session_cookie(response, session["token"])
+    except AuthError as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        return _error_response(exc, 500)
+
+
 @auth_bp.route("/api/auth/login", methods=["POST"])
 def auth_login():
     try:

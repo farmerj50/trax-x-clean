@@ -122,6 +122,14 @@ const AUTH_EXPIRED_EVENT = "trax-x-auth-expired";
 
 const buildApiUrl = (path) => {
   if (!path.startsWith("/")) path = `/${path}`;
+  if (
+    process.env.NODE_ENV === "development" &&
+    typeof window !== "undefined" &&
+    isLocalHostname(window.location.hostname) &&
+    path.startsWith("/api/")
+  ) {
+    return path;
+  }
   return `${API_BASE}${path}`;
 };
 

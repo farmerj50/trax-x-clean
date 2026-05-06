@@ -347,9 +347,9 @@ def _volume_score(base: dict) -> float:
 
 
 def _gap_score(base: dict, sentiment: float) -> float:
-    gap_percent = abs(_safe_float(base.get("gapPercent")))
-    gap_component = _clip((gap_percent / 12.0) * 80.0)
-    alignment_bonus = 20.0 if sentiment >= 0.15 and _safe_float(base.get("gapPercent")) > 0 else 0.0
+    gap_percent = _safe_float(base.get("gapPercent"))
+    gap_component = _clip(max(gap_percent, 0.0) / 12.0 * 80.0)
+    alignment_bonus = 20.0 if sentiment >= 0.15 and gap_percent > 0 else 0.0
     return round(_clip(gap_component + alignment_bonus), 2)
 
 
@@ -396,7 +396,7 @@ def _float_pressure_score(base: dict) -> float:
 def _sector_strength_score(base: dict, sector_lookup: dict[str, dict]) -> float:
     sector = str(base.get("sector") or "Unclassified")
     sector_data = sector_lookup.get(sector) or {}
-    avg_gap = abs(_safe_float(sector_data.get("avg_gap")))
+    avg_gap = max(_safe_float(sector_data.get("avg_gap")), 0.0)
     avg_rvol = _safe_float(sector_data.get("avg_rvol"))
     gap_component = _clip((avg_gap / 5.0) * 55.0)
     volume_component = _clip((avg_rvol / 3.0) * 45.0)
@@ -451,29 +451,35 @@ def _news_age_minutes(news_items: list[dict]) -> float | None:
 
 def _live_volume_metrics(ticker: str) -> dict[str, float]:
     bars = _fetch_recent_minute_bars(ticker, window_minutes=15)
-    if not bars:
+    bar_count = len(bars)
+
+    if bar_count < 8:
         return {
-            "minuteBarCount": 0.0,
+            "minuteBarCount": float(bar_count),
             "volumeLast5Min": 0.0,
             "volumePrev5Min": 0.0,
             "volumeAcceleration": 0.0,
+            "premarketVwap": 0.0,
         }
 
     volumes = [_safe_float(row.get("v")) for row in bars]
     last_5 = sum(volumes[-5:])
-    prev_5 = sum(volumes[-10:-5]) if len(volumes) >= 10 else sum(volumes[:-5])
-    if prev_5 > 0:
-        acceleration = last_5 / prev_5
-    elif last_5 > 0 and len(volumes) >= 3:
-        acceleration = 2.0
-    else:
-        acceleration = 0.0
+    prev_5 = sum(volumes[-10:-5]) if bar_count >= 10 else sum(volumes[:-5]) if bar_count > 5 else 0.0
+    acceleration = (last_5 / prev_5) if prev_5 > 0 else 1.0
+
+    total_vol = sum(volumes)
+    weighted_price = sum(
+        _safe_float(row.get("vw"), _safe_float(row.get("c"))) * _safe_float(row.get("v"))
+        for row in bars
+    )
+    pm_vwap = (weighted_price / total_vol) if total_vol > 0 else 0.0
 
     return {
-        "minuteBarCount": float(len(bars)),
+        "minuteBarCount": float(bar_count),
         "volumeLast5Min": round(last_5, 2),
         "volumePrev5Min": round(prev_5, 2),
         "volumeAcceleration": round(acceleration, 4),
+        "premarketVwap": round(pm_vwap, 4),
     }
 
 
@@ -672,9 +678,10 @@ def _weighted_score(components: dict[str, float]) -> float:
 def _priority_score(row: dict) -> float:
     return round(
         _clip(
-            _safe_float(row.get("socialCompositeScore")) * 0.55
-            + _safe_float(row.get("detectorScore")) * 0.25
-            + _safe_float(row.get("score")) * 0.20
+            _safe_float(row.get("score")) * 0.40
+            + _safe_float(row.get("detectorScore")) * 0.30
+            + _safe_float(row.get("earlyPressureScore")) * 0.25
+            + _safe_float(row.get("socialCompositeScore")) * 0.05
         ),
         2,
     )
@@ -721,7 +728,7 @@ def _ai_summary(base: dict, catalyst_type: str, score: float, sentiment: float) 
         return f"{ticker} is showing a high-conviction premarket move backed by {catalyst_type} context and elevated participation."
     if sentiment >= 0.2 and volume >= 1.5:
         return f"{ticker} has credible premarket interest with positive headline tone and above-normal activity."
-    if gap >= 0:
+    if gap > 0:
         return f"{ticker} is moving with some catalyst support, but it still needs open confirmation."
     return f"{ticker} is active premarket, though the move currently looks less durable than the top-ranked names."
 
@@ -770,6 +777,8 @@ def _enrich_candidate(base: dict, sector_lookup: dict[str, dict]) -> dict:
         catalyst_type,
         len(news_items),
     )
+    live_metrics = _live_volume_metrics(base["ticker"])
+    combined_breakdown = {**early_pressure_breakdown, **live_metrics}
     score_breakdown = {
         "premarketVolumeScore": _volume_score(base),
         "gapStrengthScore": _gap_score(base, sentiment),
@@ -789,7 +798,8 @@ def _enrich_candidate(base: dict, sector_lookup: dict[str, dict]) -> dict:
             "sentiment": sentiment,
             "catalystType": catalyst_type,
             "marketCap": base.get("marketCap"),
-            "earlyPressureBreakdown": early_pressure_breakdown,
+            "premarketVwap": live_metrics.get("premarketVwap", 0.0),
+            "earlyPressureBreakdown": combined_breakdown,
         }
     )
     enriched = {
@@ -805,9 +815,10 @@ def _enrich_candidate(base: dict, sector_lookup: dict[str, dict]) -> dict:
         "confidence": round(score / 100.0, 2),
         "risk": _risk_summary(base, score, sentiment),
         "aiSummary": _ai_summary(base, catalyst_type, score, sentiment),
+        "premarketVwap": live_metrics.get("premarketVwap", 0.0),
         "earlyPressureScore": early_pressure_score,
         "earlyPressureState": _early_pressure_state(base, early_pressure_score),
-        "earlyPressureBreakdown": early_pressure_breakdown,
+        "earlyPressureBreakdown": combined_breakdown,
         "detectorScore": detector["detectorScore"],
         "detectorState": detector["detectorState"],
         "triggerFlags": detector["triggerFlags"],
@@ -882,7 +893,7 @@ def _initial_candidate_pool(limit: int = 45, *, min_premarket_volume: float = 10
         market_cap = _safe_float(parsed.get("marketCap"))
         distance_to_high = _safe_float(parsed.get("distanceToPremarketHighPct"))
 
-        if price < 0.5:
+        if price < 1.0 or price > 50.0:
             continue
         if premarket_volume < min_premarket_volume:
             continue
@@ -1147,7 +1158,17 @@ def get_premarket_intelligence(*, limit: int = 8, filters: dict[str, Any] | None
     )
 
     top_picks = top_pick_candidates[:top_limit]
-    heatmap_rows = confirmed_candidates[: min(max(top_limit * 4, 24), 40)]
+    heatmap_limit = min(max(top_limit * 4, 24), 40)
+    heatmap_priority_rows = [
+        row for row in confirmed_candidates
+        if str(row.get("detectorState")) in {"triggered", "arming"}
+    ]
+    heatmap_seen = {str(row.get("ticker") or "").upper() for row in heatmap_priority_rows}
+    heatmap_rows = heatmap_priority_rows + [
+        row for row in confirmed_candidates
+        if str(row.get("ticker") or "").upper() not in heatmap_seen
+    ]
+    heatmap_rows = heatmap_rows[:heatmap_limit]
     if not early_filtered:
         early_filtered = [row for row in (filtered or enriched) if _safe_float(row.get("gapPercent")) > 0]
     early_watch = _build_live_early_watch(early_filtered, top_limit)
@@ -1179,26 +1200,26 @@ def get_premarket_intelligence(*, limit: int = 8, filters: dict[str, Any] | None
                 "liquidityGrade": row["liquidityGrade"],
                 "entryQuality": row["entryQuality"],
                 "confidence": row["confidence"],
-                "socialCompositeScore": row["socialCompositeScore"],
-                "socialMomentumScore": row["socialMomentumScore"],
-                "investorConfidenceScore": row["investorConfidenceScore"],
-                "socialSentiment": row["socialSentiment"],
-                "socialMentions": row["socialMentions"],
-                "socialCoverageStatus": row["socialCoverageStatus"],
-                "socialTrendStage": row["socialTrendStage"],
-                "socialAlertState": row["socialAlertState"],
-                "projectedLeadDays": row["projectedLeadDays"],
-                "socialVelocity": row["socialVelocity"],
-                "buildPersistence": row["buildPersistence"],
-                "socialRecommendation": row["socialRecommendation"],
-                "socialSummary": row["socialSummary"],
-                "earlyPressureScore": row["earlyPressureScore"],
-                "earlyPressureState": row["earlyPressureState"],
-                "detectorScore": row["detectorScore"],
-                "detectorState": row["detectorState"],
-                "triggerFlags": row["triggerFlags"],
-                "risk": row["risk"],
-                "aiSummary": row["aiSummary"],
+                "socialCompositeScore": row.get("socialCompositeScore", 0),
+                "socialMomentumScore": row.get("socialMomentumScore", 0),
+                "investorConfidenceScore": row.get("investorConfidenceScore", 0),
+                "socialSentiment": row.get("socialSentiment", ""),
+                "socialMentions": row.get("socialMentions", 0),
+                "socialCoverageStatus": row.get("socialCoverageStatus", ""),
+                "socialTrendStage": row.get("socialTrendStage", ""),
+                "socialAlertState": row.get("socialAlertState", ""),
+                "projectedLeadDays": row.get("projectedLeadDays", 0),
+                "socialVelocity": row.get("socialVelocity", 0),
+                "buildPersistence": row.get("buildPersistence", 0),
+                "socialRecommendation": row.get("socialRecommendation", {}),
+                "socialSummary": row.get("socialSummary", ""),
+                "earlyPressureScore": row.get("earlyPressureScore", 0),
+                "earlyPressureState": row.get("earlyPressureState", ""),
+                "detectorScore": row.get("detectorScore", 0),
+                "detectorState": row.get("detectorState", ""),
+                "triggerFlags": row.get("triggerFlags", []),
+                "risk": row.get("risk", ""),
+                "aiSummary": row.get("aiSummary", ""),
             }
             for row in top_picks
         ],
@@ -1208,16 +1229,16 @@ def get_premarket_intelligence(*, limit: int = 8, filters: dict[str, Any] | None
                 "companyName": row["companyName"],
                 "score": row["score"],
                 "priorityScore": row["priorityScore"],
-                "socialCompositeScore": row["socialCompositeScore"],
-                "investorConfidenceScore": row["investorConfidenceScore"],
-                "socialCoverageStatus": row["socialCoverageStatus"],
-                "socialTrendStage": row["socialTrendStage"],
-                "socialAlertState": row["socialAlertState"],
-                "projectedLeadDays": row["projectedLeadDays"],
-                "socialRecommendation": row["socialRecommendation"],
-                "socialSummary": row["socialSummary"],
-                "earlyPressureScore": row["earlyPressureScore"],
-                "earlyPressureState": row["earlyPressureState"],
+                "socialCompositeScore": row.get("socialCompositeScore", 0),
+                "investorConfidenceScore": row.get("investorConfidenceScore", 0),
+                "socialCoverageStatus": row.get("socialCoverageStatus", ""),
+                "socialTrendStage": row.get("socialTrendStage", ""),
+                "socialAlertState": row.get("socialAlertState", ""),
+                "projectedLeadDays": row.get("projectedLeadDays", 0),
+                "socialRecommendation": row.get("socialRecommendation", {}),
+                "socialSummary": row.get("socialSummary", ""),
+                "earlyPressureScore": row.get("earlyPressureScore", 0),
+                "earlyPressureState": row.get("earlyPressureState", ""),
                 "gapPercent": row["gapPercent"],
                 "premarketVolume": row["premarketVolume"],
                 "relativeVolume": row["relativeVolume"],
@@ -1228,10 +1249,10 @@ def get_premarket_intelligence(*, limit: int = 8, filters: dict[str, Any] | None
                 "catalystType": row["catalystType"],
                 "headlineCount": row["headlineCount"],
                 "sentiment": row["sentiment"],
-                "aiSummary": row["aiSummary"],
-                "detectorScore": row["detectorScore"],
-                "detectorState": row["detectorState"],
-                "triggerFlags": row["triggerFlags"],
+                "aiSummary": row.get("aiSummary", ""),
+                "detectorScore": row.get("detectorScore", 0),
+                "detectorState": row.get("detectorState", ""),
+                "triggerFlags": row.get("triggerFlags", []),
             }
             for row in early_watch
         ],
@@ -1240,15 +1261,22 @@ def get_premarket_intelligence(*, limit: int = 8, filters: dict[str, Any] | None
                 "ticker": row["ticker"],
                 "score": row["score"],
                 "priorityScore": row["priorityScore"],
+                "detectorScore": row.get("detectorScore", 0),
+                "detectorState": row.get("detectorState", ""),
+                "earlyPressureScore": row.get("earlyPressureScore", 0),
+                "earlyPressureState": row.get("earlyPressureState", ""),
+                "setupType": row.get("setupType", ""),
+                "conviction": row.get("conviction", ""),
                 "gapPercent": row["gapPercent"],
                 "sector": row["sector"],
+                "premarketVolume": row["premarketVolume"],
+                "relativeVolume": row["relativeVolume"],
                 "sizeMetric": row["premarketVolume"],
                 "colorMetric": row["sentiment"],
-                "socialCompositeScore": row["socialCompositeScore"],
-                "earlyPressureScore": row["earlyPressureScore"],
+                "socialCompositeScore": row.get("socialCompositeScore", 0),
                 "distanceToPremarketHighPct": row["distanceToPremarketHighPct"],
                 "catalystType": row["catalystType"],
-                "aiSummary": row["aiSummary"],
+                "aiSummary": row.get("aiSummary", ""),
             }
             for row in heatmap_rows
         ],
@@ -1268,30 +1296,30 @@ def get_premarket_intelligence(*, limit: int = 8, filters: dict[str, Any] | None
                 "sector": row["sector"],
                 "headlineCount": row["headlineCount"],
                 "sentiment": row["sentiment"],
-                "socialCompositeScore": row["socialCompositeScore"],
-                "socialMomentumScore": row["socialMomentumScore"],
-                "investorConfidenceScore": row["investorConfidenceScore"],
-                "socialSentiment": row["socialSentiment"],
-                "socialMentions": row["socialMentions"],
-                "socialCoverageStatus": row["socialCoverageStatus"],
-                "socialTrendStage": row["socialTrendStage"],
-                "socialAlertState": row["socialAlertState"],
-                "projectedLeadDays": row["projectedLeadDays"],
-                "socialVelocity": row["socialVelocity"],
-                "buildPersistence": row["buildPersistence"],
-                "socialRecommendation": row["socialRecommendation"],
-                "socialSummary": row["socialSummary"],
+                "socialCompositeScore": row.get("socialCompositeScore", 0),
+                "socialMomentumScore": row.get("socialMomentumScore", 0),
+                "investorConfidenceScore": row.get("investorConfidenceScore", 0),
+                "socialSentiment": row.get("socialSentiment", ""),
+                "socialMentions": row.get("socialMentions", 0),
+                "socialCoverageStatus": row.get("socialCoverageStatus", ""),
+                "socialTrendStage": row.get("socialTrendStage", ""),
+                "socialAlertState": row.get("socialAlertState", ""),
+                "projectedLeadDays": row.get("projectedLeadDays", 0),
+                "socialVelocity": row.get("socialVelocity", 0),
+                "buildPersistence": row.get("buildPersistence", 0),
+                "socialRecommendation": row.get("socialRecommendation", {}),
+                "socialSummary": row.get("socialSummary", ""),
                 "premarketHigh": row["premarketHigh"],
                 "distanceToPremarketHighPct": row["distanceToPremarketHighPct"],
                 "catalystType": row["catalystType"],
-                "earlyPressureScore": row["earlyPressureScore"],
-                "earlyPressureState": row["earlyPressureState"],
-                "detectorScore": row["detectorScore"],
-                "detectorState": row["detectorState"],
-                "triggerFlags": row["triggerFlags"],
-                "liquidityGrade": row["liquidityGrade"],
-                "entryQuality": row["entryQuality"],
-                "aiSummary": row["aiSummary"],
+                "earlyPressureScore": row.get("earlyPressureScore", 0),
+                "earlyPressureState": row.get("earlyPressureState", ""),
+                "detectorScore": row.get("detectorScore", 0),
+                "detectorState": row.get("detectorState", ""),
+                "triggerFlags": row.get("triggerFlags", []),
+                "liquidityGrade": row.get("liquidityGrade", "C"),
+                "entryQuality": row.get("entryQuality", "C"),
+                "aiSummary": row.get("aiSummary", ""),
             }
             for row in heatmap_rows
         ],
