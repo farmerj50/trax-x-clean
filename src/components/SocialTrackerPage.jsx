@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { apiFetch } from "../apiClient";
 import "./SocialTrackerPage.css";
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+
 const toCsvList = (value) =>
   String(value || "")
     .split(",")
