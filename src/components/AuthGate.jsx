@@ -100,6 +100,29 @@ const AuthGate = ({ children }) => {
     }
   };
 
+  const submitRegister = async (event) => {
+    event.preventDefault();
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      setError("");
+      const response = await apiFetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: form.username, password: form.password }),
+      });
+      setAuth(response);
+      setForm(emptyForm);
+    } catch (err) {
+      setError(err?.message || "Could not create account.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submitPasswordChange = async (event) => {
     event.preventDefault();
     if (form.newPassword !== form.confirmNewPassword) {
@@ -152,12 +175,13 @@ const AuthGate = ({ children }) => {
 
   if (!auth.authenticated) {
     const isSetup = auth.setupRequired || mode === "setup";
+    const isRegister = !isSetup && mode === "register";
     return (
       <main className="auth-page">
         <section className="auth-card">
           <div className="auth-kicker">Trax-X</div>
-          <h1>{isSetup ? "Create Admin Login" : "Sign In"}</h1>
-          <form className="auth-form" onSubmit={isSetup ? submitSetup : submitLogin}>
+          <h1>{isSetup ? "Create Admin Login" : isRegister ? "Create Account" : "Sign In"}</h1>
+          <form className="auth-form" onSubmit={isSetup ? submitSetup : isRegister ? submitRegister : submitLogin}>
             <label>
               <span>Username</span>
               <input
@@ -170,12 +194,12 @@ const AuthGate = ({ children }) => {
               <span>Password</span>
               <input
                 type="password"
-                autoComplete={isSetup ? "new-password" : "current-password"}
+                autoComplete={isSetup || isRegister ? "new-password" : "current-password"}
                 value={form.password}
                 onChange={(event) => updateForm("password", event.target.value)}
               />
             </label>
-            {isSetup && (
+            {(isSetup || isRegister) && (
               <label>
                 <span>Confirm Password</span>
                 <input
@@ -188,9 +212,23 @@ const AuthGate = ({ children }) => {
             )}
             {error && <div className="auth-error">{error}</div>}
             <button type="submit" disabled={submitting}>
-              {submitting ? "Working" : isSetup ? "Create Login" : "Login"}
+              {submitting ? "Working" : isSetup ? "Create Login" : isRegister ? "Create Account" : "Login"}
             </button>
           </form>
+          {!isSetup && (
+            <button
+              type="button"
+              className="auth-link-btn"
+              onClick={() => {
+                setMode(isRegister ? "login" : "register");
+                setError("");
+                setMessage("");
+              }}
+              disabled={submitting}
+            >
+              {isRegister ? "Already have an account? Sign in" : "Create an account"}
+            </button>
+          )}
         </section>
       </main>
     );

@@ -120,6 +120,8 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": user.get("id"),
         "username": user.get("username"),
+        "accountType": user.get("accountType"),
+        "fundingAmount": user.get("fundingAmount"),
         "createdAt": user.get("createdAt"),
         "lastLoginAt": user.get("lastLoginAt"),
     }
@@ -194,6 +196,40 @@ def create_first_user(username: Any, password: Any) -> dict[str, Any]:
             "id": user_id,
             "username": clean_username,
             "passwordHash": generate_password_hash(clean_password),
+            "createdAt": now,
+            "updatedAt": now,
+            "lastLoginAt": None,
+        }
+        _save_state(state)
+        return _public_user(state["users"][user_id])
+
+
+def create_user(username: Any, password: Any, *, account_type: Any = "", funding_amount: Any = "") -> dict[str, Any]:
+    clean_username = _validate_username(username)
+    clean_password = _validate_password(password)
+    clean_account_type = str(account_type or "").strip().lower()
+    clean_funding_amount = str(funding_amount or "").strip().lower()
+    allowed_account_types = {"personal", "business", "corporate", ""}
+    allowed_funding_amounts = {"starter", "growth", "active", ""}
+
+    if clean_account_type not in allowed_account_types:
+        raise AuthError("Account type is invalid.", 400)
+    if clean_funding_amount not in allowed_funding_amounts:
+        raise AuthError("Funding amount is invalid.", 400)
+
+    with AUTH_LOCK:
+        state = _load_state()
+        if _find_user_by_username(state, clean_username):
+            raise AuthError("An account with that username already exists.", 409)
+
+        now = utc_now()
+        user_id = str(uuid4())
+        state["users"][user_id] = {
+            "id": user_id,
+            "username": clean_username,
+            "passwordHash": generate_password_hash(clean_password),
+            "accountType": clean_account_type or None,
+            "fundingAmount": clean_funding_amount or None,
             "createdAt": now,
             "updatedAt": now,
             "lastLoginAt": None,

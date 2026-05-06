@@ -89,6 +89,26 @@
   cursor: not-allowed;
 }
 
+.auth-link-btn {
+  width: 100%;
+  margin-top: 14px;
+  border: 0;
+  background: transparent;
+  color: #93c5fd;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-link-btn:hover:not(:disabled) {
+  color: #ffffff;
+}
+
+.auth-link-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .auth-error {
   border-radius: 12px;
   border: 1px solid rgba(248, 113, 113, 0.22);

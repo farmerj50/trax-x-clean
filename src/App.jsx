@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { BrowserRouter as Router, Link, Navigate, Route, Routes } from "react-router-dom";
 import StockScanner from "./components/StockScanner";
 import SearchForm from "./components/SearchForm";
 import TickerNewsWidget from "./components/TickerNewsWidget";
@@ -17,10 +17,53 @@ import SocialTrackerPage from "./components/SocialTrackerPage";
 import TradingPage from "./components/TradingPage";
 import GlobalAlertContactBar from "./components/GlobalAlertContactBar";
 import AuthGate from "./components/AuthGate";
+import LandingPage from "./components/LandingPage";
 import { apiFetch } from "./apiClient";
 import "./App.css";
 
-const App = () => {
+const ScannerHome = ({
+  errorMsg,
+  fetchStocks,
+  hasScanned,
+  scannerLoading,
+  stocks,
+  theme,
+  tickers,
+}) => (
+  <div className={`scanner-home-page ${theme}`}>
+    <div className="scanner-page-shell">
+      <div className="scanner-page-header">
+        <div className="scanner-page-heading">
+          <div className="scanner-page-kicker">Scanner Terminal</div>
+          <h2 className="scanner-page-title">AI Stock Scanner</h2>
+          <p className="scanner-page-subtitle">
+            Filter stocks by price, momentum, and volume expansion.
+          </p>
+        </div>
+        <div className="scanner-page-badges">
+          <span className="scanner-page-badge">
+            Status:{" "}
+            <strong>{scannerLoading ? "Scanning" : hasScanned ? "Ready" : "Idle"}</strong>
+          </span>
+          <span className="scanner-page-badge">
+            Matches: <strong>{stocks.length}</strong>
+          </span>
+        </div>
+      </div>
+
+      <SearchForm onSearch={fetchStocks} />
+
+      {errorMsg && <div className="scanner-alert">{errorMsg}</div>}
+
+      <div className="scanner-content-grid">
+        <StockScanner stocks={stocks} loading={scannerLoading} hasScanned={hasScanned} />
+        <TickerNewsWidget tickers={tickers} />
+      </div>
+    </div>
+  </div>
+);
+
+const ProtectedApp = () => {
   const [stocks, setStocks] = useState([]);
   const [tickers, setTickers] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
@@ -28,7 +71,7 @@ const App = () => {
   const [hasScanned, setHasScanned] = useState(false);
   const [theme, setTheme] = useState(
     localStorage.getItem("theme") ||
-    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
   );
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef();
@@ -93,108 +136,133 @@ const App = () => {
   };
 
   return (
-    <Router>
-      <AuthGate>
-        {({ user, logout, changePassword }) => (
-          <>
-      <div className={`menu-bar ${theme}`}>
-        <h1 className="menu-title">AI Stock Scanner</h1>
-        <div className="menu-buttons">
-          <Link to="/"><button>Home</button></Link>
-          <div
-            className="dropdown"
-            onMouseEnter={() => setShowDropdown(true)}
-            onMouseLeave={() => setShowDropdown(false)}
-            ref={dropdownRef}
-          >
-            <button
-              type="button"
-              className="dropdown-btn"
-              aria-expanded={showDropdown}
-              onClick={() => setShowDropdown((open) => !open)}
-            >
-              Stocks
-            </button>
+    <AuthGate>
+      {({ user, logout, changePassword }) => (
+        <>
+          <div className={`menu-bar ${theme}`}>
+            <h1 className="menu-title">AI Stock Scanner</h1>
+            <div className="menu-buttons">
+              <Link to="/">
+                <button>Landing</button>
+              </Link>
+              <Link to="/scanner">
+                <button>Scanner</button>
+              </Link>
+              <div
+                className="dropdown"
+                onMouseEnter={() => setShowDropdown(true)}
+                onMouseLeave={() => setShowDropdown(false)}
+                ref={dropdownRef}
+              >
+                <button
+                  type="button"
+                  className="dropdown-btn"
+                  aria-expanded={showDropdown}
+                  onClick={() => setShowDropdown((open) => !open)}
+                >
+                  Stocks
+                </button>
 
-            {showDropdown && (
-              <div className="dropdown-content">
-                <Link to="/stocks" onClick={() => setShowDropdown(false)}>All Stocks</Link>
-                <Link to="/number-one-picks" onClick={() => setShowDropdown(false)}>Number One Picks</Link>
-                <Link to="/anomalies" onClick={() => setShowDropdown(false)}>Anomalies</Link>
-                <Link to="/next-day-picks" onClick={() => setShowDropdown(false)}>Next Day Picks</Link>
-                <Link to="/biggest-gains" onClick={() => setShowDropdown(false)}>Biggest Gains</Link>
-                <Link to="/three-day-breakouts" onClick={() => setShowDropdown(false)}>3-Day Breakouts</Link>
-                <Link to="/premarket-intelligence" onClick={() => setShowDropdown(false)}>Premarket Intelligence</Link>
-              </div>
-            )}
-          </div>
-          <Link to="/options"><button>Options</button></Link>
-          <Link to="/crypto"><button>Crypto</button></Link>
-          <Link to="/trading"><button>Trading</button></Link>
-          <Link to="/social-tracker"><button>Social</button></Link>
-          <Link to="/short-sales"><button>Short Sales</button></Link>
-          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Light Mode" : "Dark Mode"}</button>
-          <button type="button" onClick={changePassword}>Change Password</button>
-          <button type="button" onClick={logout}>Logout {user?.username ? `(${user.username})` : ""}</button>
-        </div>
-      </div>
-
-      <GlobalAlertContactBar />
-
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <div className={`scanner-home-page ${theme}`}>
-              <div className="scanner-page-shell">
-                <div className="scanner-page-header">
-                  <div className="scanner-page-heading">
-                    <div className="scanner-page-kicker">Scanner Terminal</div>
-                    <h2 className="scanner-page-title">AI Stock Scanner</h2>
-                    <p className="scanner-page-subtitle">
-                      Filter stocks by price, momentum, and volume expansion.
-                    </p>
+                {showDropdown && (
+                  <div className="dropdown-content">
+                    <Link to="/stocks" onClick={() => setShowDropdown(false)}>
+                      All Stocks
+                    </Link>
+                    <Link to="/number-one-picks" onClick={() => setShowDropdown(false)}>
+                      Number One Picks
+                    </Link>
+                    <Link to="/anomalies" onClick={() => setShowDropdown(false)}>
+                      Anomalies
+                    </Link>
+                    <Link to="/next-day-picks" onClick={() => setShowDropdown(false)}>
+                      Next Day Picks
+                    </Link>
+                    <Link to="/biggest-gains" onClick={() => setShowDropdown(false)}>
+                      Biggest Gains
+                    </Link>
+                    <Link to="/three-day-breakouts" onClick={() => setShowDropdown(false)}>
+                      3-Day Breakouts
+                    </Link>
+                    <Link to="/premarket-intelligence" onClick={() => setShowDropdown(false)}>
+                      Premarket Intelligence
+                    </Link>
                   </div>
-                  <div className="scanner-page-badges">
-                    <span className="scanner-page-badge">
-                      Status: <strong>{scannerLoading ? "Scanning" : hasScanned ? "Ready" : "Idle"}</strong>
-                    </span>
-                    <span className="scanner-page-badge">
-                      Matches: <strong>{stocks.length}</strong>
-                    </span>
-                  </div>
-                </div>
-
-                <SearchForm onSearch={fetchStocks} />
-
-                {errorMsg && <div className="scanner-alert">{errorMsg}</div>}
-
-                <div className="scanner-content-grid">
-                  <StockScanner stocks={stocks} loading={scannerLoading} hasScanned={hasScanned} />
-                  <TickerNewsWidget tickers={tickers} />
-                </div>
+                )}
               </div>
+              <Link to="/options">
+                <button>Options</button>
+              </Link>
+              <Link to="/crypto">
+                <button>Crypto</button>
+              </Link>
+              <Link to="/trading">
+                <button>Trading</button>
+              </Link>
+              <Link to="/social-tracker">
+                <button>Social</button>
+              </Link>
+              <Link to="/short-sales">
+                <button>Short Sales</button>
+              </Link>
+              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+                {theme === "dark" ? "Light Mode" : "Dark Mode"}
+              </button>
+              <button type="button" onClick={changePassword}>
+                Change Password
+              </button>
+              <button type="button" onClick={logout}>
+                Logout {user?.username ? `(${user.username})` : ""}
+              </button>
             </div>
-          }
-        />
-        <Route path="/stocks" element={<StocksPage theme={theme} />} />
-        <Route path="/number-one-picks" element={<NumberOnePicksPage />} />
-        <Route path="/anomalies" element={<AnomaliesPage />} />
-        <Route path="/next-day-picks" element={<NextDayPicksPage />} />
-        <Route path="/three-day-breakouts" element={<ThreeDayBreakoutsPage />} />
-        <Route path="/options" element={<OptionsPage theme={theme} />} />
-        <Route path="/crypto" element={<CryptoPage theme={theme} />} />
-        <Route path="/trading" element={<TradingPage theme={theme} />} />
-        <Route path="/social-tracker" element={<SocialTrackerPage theme={theme} />} />
-        <Route path="/short-sales" element={<ShortSalesPage theme={theme} />} />
-        <Route path="/biggest-gains" element={<BiggestGainsPage />} />
-        <Route path="/premarket-intelligence" element={<PremarketIntelligencePage theme={theme} />} />
-      </Routes>
-          </>
-        )}
-      </AuthGate>
-    </Router>
+          </div>
+
+          <GlobalAlertContactBar />
+
+          <Routes>
+            <Route
+              path="/scanner"
+              element={
+                <ScannerHome
+                  errorMsg={errorMsg}
+                  fetchStocks={fetchStocks}
+                  hasScanned={hasScanned}
+                  scannerLoading={scannerLoading}
+                  stocks={stocks}
+                  theme={theme}
+                  tickers={tickers}
+                />
+              }
+            />
+            <Route path="/stocks" element={<StocksPage theme={theme} />} />
+            <Route path="/number-one-picks" element={<NumberOnePicksPage />} />
+            <Route path="/anomalies" element={<AnomaliesPage />} />
+            <Route path="/next-day-picks" element={<NextDayPicksPage />} />
+            <Route path="/three-day-breakouts" element={<ThreeDayBreakoutsPage />} />
+            <Route path="/options" element={<OptionsPage theme={theme} />} />
+            <Route path="/crypto" element={<CryptoPage theme={theme} />} />
+            <Route path="/trading" element={<TradingPage theme={theme} />} />
+            <Route path="/social-tracker" element={<SocialTrackerPage theme={theme} />} />
+            <Route path="/short-sales" element={<ShortSalesPage theme={theme} />} />
+            <Route path="/biggest-gains" element={<BiggestGainsPage />} />
+            <Route
+              path="/premarket-intelligence"
+              element={<PremarketIntelligencePage theme={theme} />}
+            />
+            <Route path="*" element={<Navigate to="/scanner" replace />} />
+          </Routes>
+        </>
+      )}
+    </AuthGate>
   );
 };
+
+const App = () => (
+  <Router>
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/*" element={<ProtectedApp />} />
+    </Routes>
+  </Router>
+);
 
 export default App;

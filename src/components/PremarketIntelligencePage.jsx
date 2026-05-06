@@ -109,11 +109,12 @@ const tileBackground = (row) => {
   return "linear-gradient(180deg, rgba(30,41,59,0.74), rgba(15,23,42,0.96))";
 };
 
-const tileSpan = (sizeMetric) => {
+const heatTileSizeClass = (sizeMetric) => {
   const size = Number(sizeMetric || 0);
-  if (size >= 8_000_000) return { gridColumn: "span 2", gridRow: "span 2" };
-  if (size >= 2_000_000) return { gridColumn: "span 2", gridRow: "span 1" };
-  return { gridColumn: "span 1", gridRow: "span 1" };
+  if (size >= 8_000_000) return "large";
+  if (size >= 2_000_000) return "wide";
+  if (size >= 750_000) return "medium";
+  return "small";
 };
 
 const graphNodeColor = (type) => {
@@ -825,9 +826,8 @@ const PremarketIntelligencePage = () => {
                     <button
                       key={stock.ticker}
                       type="button"
-                      className={`heat-tile ${selectedTicker === stock.ticker ? "active" : ""}`}
+                      className={`heat-tile ${heatTileSizeClass(stock.sizeMetric)} ${selectedTicker === stock.ticker ? "active" : ""}`}
                       style={{
-                        ...tileSpan(stock.sizeMetric),
                         background: tileBackground(stock),
                         boxShadow: selectedTicker === stock.ticker ? "0 16px 36px rgba(8,145,178,0.22)" : "none",
                         textAlign: "left",
