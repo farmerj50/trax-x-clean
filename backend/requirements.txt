@@ -1,8 +1,8 @@
 flask
 flask-cors
 flask-socketio
-gunicorn
-eventlet
+gunicorn[eventlet]==23.0.0
+eventlet==0.40.3
 websocket-client
 python-dotenv
 yfinance
