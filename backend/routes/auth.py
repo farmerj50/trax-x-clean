@@ -53,6 +53,7 @@ def auth_setup():
                     "setupRequired": False,
                     "user": user,
                     "sessionExpiresAt": session["expiresAt"],
+                    "sessionToken": session["token"],
                 }
             ),
             201,
@@ -88,6 +89,7 @@ def auth_register():
                     "setupRequired": False,
                     "user": user,
                     "sessionExpiresAt": session["expiresAt"],
+                    "sessionToken": session["token"],
                 }
             ),
             201,
@@ -117,6 +119,7 @@ def auth_login():
                     "setupRequired": False,
                     "user": session["user"],
                     "sessionExpiresAt": session["expiresAt"],
+                    "sessionToken": session["token"],
                 }
             ),
             200,

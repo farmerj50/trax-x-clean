@@ -284,7 +284,16 @@ def create_session(username: Any, password: Any, *, user_agent: str = "", remote
 
 
 def get_token_from_request(req) -> str:
-    return str(req.cookies.get(config.AUTH_SESSION_COOKIE) or "")
+    cookie_token = str(req.cookies.get(config.AUTH_SESSION_COOKIE) or "").strip()
+    if cookie_token:
+        return cookie_token
+
+    auth_header = str(req.headers.get("Authorization", "") or "").strip()
+    scheme, _, token = auth_header.partition(" ")
+    if scheme.lower() == "bearer" and token.strip():
+        return token.strip()
+
+    return ""
 
 
 def get_session(token: str) -> dict[str, Any] | None:

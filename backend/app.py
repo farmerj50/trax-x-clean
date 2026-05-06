@@ -83,7 +83,12 @@ except Exception:
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=list(config.AUTH_ALLOWED_ORIGINS))
+CORS(
+    app,
+    supports_credentials=True,
+    origins=list(config.AUTH_ALLOWED_ORIGINS),
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 
 @app.before_request

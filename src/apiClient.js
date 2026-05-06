@@ -119,6 +119,40 @@ const defaultSocketBase = (() => {
 const API_BASE = defaultApiBase;
 const SOCKET_BASE = defaultSocketBase;
 const AUTH_EXPIRED_EVENT = "trax-x-auth-expired";
+const AUTH_TOKEN_STORAGE_KEY = "trax_x_auth_token";
+
+const getStoredAuthToken = () => {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage?.getItem(AUTH_TOKEN_STORAGE_KEY) || "";
+  } catch (error) {
+    return "";
+  }
+};
+
+const storeAuthToken = (token) => {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      window.localStorage?.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage?.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+  } catch (error) {
+    // Keep auth cookie behavior as the fallback when storage is unavailable.
+  }
+};
+
+const clearAuthToken = () => {
+  storeAuthToken("");
+};
+
+const storeAuthTokenFromResponse = (response) => {
+  const token = response?.sessionToken || response?.token || "";
+  if (token) {
+    storeAuthToken(token);
+  }
+};
 
 const buildApiUrl = (path) => {
   if (!path.startsWith("/")) path = `/${path}`;
@@ -156,12 +190,18 @@ const apiFetch = async (path, options = {}) => {
   const { timeoutMs = 15000, signal, ...fetchOptions } = options;
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+  const headers = new Headers(fetchOptions.headers || {});
+  const authToken = getStoredAuthToken();
+  if (authToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${authToken}`);
+  }
 
   let response;
   try {
     response = await fetch(buildApiUrl(path), {
       credentials: "include",
       ...fetchOptions,
+      headers,
       signal: mergeAbortSignals([signal, timeoutController.signal]),
     });
   } catch (error) {
@@ -184,6 +224,7 @@ const apiFetch = async (path, options = {}) => {
   if (!response.ok) {
     const bodyPreview = receivedHtml ? "[HTML document returned]" : trimmed.slice(0, 300);
     if (response.status === 401 && typeof window !== "undefined" && !String(path || "").startsWith("/api/auth/")) {
+      clearAuthToken();
       window.dispatchEvent(
         new CustomEvent(AUTH_EXPIRED_EVENT, {
           detail: { path, status: response.status },
@@ -211,8 +252,18 @@ const exportsObj = {
   API_BASE,
   SOCKET_BASE,
   buildApiUrl,
+  clearAuthToken,
   apiFetch,
+  storeAuthTokenFromResponse,
 };
 
-export { AUTH_EXPIRED_EVENT, API_BASE, SOCKET_BASE, buildApiUrl, apiFetch };
+export {
+  AUTH_EXPIRED_EVENT,
+  API_BASE,
+  SOCKET_BASE,
+  buildApiUrl,
+  clearAuthToken,
+  apiFetch,
+  storeAuthTokenFromResponse,
+};
 export default exportsObj;
