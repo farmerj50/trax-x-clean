@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { AUTH_EXPIRED_EVENT, apiFetch } from "../apiClient";
+import {
+  AUTH_EXPIRED_EVENT,
+  apiFetch,
+  clearAuthToken,
+  storeAuthTokenFromResponse,
+} from "../apiClient";
 import "./AuthGate.css";
 
 const emptyForm = {
@@ -26,6 +31,9 @@ const AuthGate = ({ children }) => {
       setError("");
       const response = await apiFetch("/api/auth/session", { timeoutMs: 10000 });
       setAuth(response);
+      if (!response?.authenticated) {
+        clearAuthToken();
+      }
       setMode(response.setupRequired ? "setup" : "login");
     } catch (err) {
       setAuth({ authenticated: false, setupRequired: false, user: null });
@@ -42,6 +50,7 @@ const AuthGate = ({ children }) => {
   useEffect(() => {
     const handleAuthExpired = () => {
       setAuth({ authenticated: false, setupRequired: false, user: null });
+      clearAuthToken();
       setForm(emptyForm);
       setMode("login");
       setMessage("");
@@ -68,6 +77,7 @@ const AuthGate = ({ children }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: form.username, password: form.password }),
       });
+      storeAuthTokenFromResponse(response);
       setAuth(response);
       setForm(emptyForm);
     } catch (err) {
@@ -91,6 +101,7 @@ const AuthGate = ({ children }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: form.username, password: form.password }),
       });
+      storeAuthTokenFromResponse(response);
       setAuth(response);
       setForm(emptyForm);
     } catch (err) {
@@ -114,6 +125,7 @@ const AuthGate = ({ children }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: form.username, password: form.password }),
       });
+      storeAuthTokenFromResponse(response);
       setAuth(response);
       setForm(emptyForm);
     } catch (err) {
@@ -157,6 +169,7 @@ const AuthGate = ({ children }) => {
     } catch (err) {
       // Clear local state even if the network request fails.
     }
+    clearAuthToken();
     setAuth({ authenticated: false, setupRequired: false, user: null });
     setForm(emptyForm);
     setMode("login");

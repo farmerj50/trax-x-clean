@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { apiFetch } from "../apiClient";
+import { apiFetch, storeAuthTokenFromResponse } from "../apiClient";
 import "./StartInvestingLayer.css";
 
 const accountOptions = [
@@ -85,6 +85,7 @@ const StartInvestingLayer = ({ initialAccount = "", onClose, onComplete = onClos
           fundingAmount: selectedFunding,
         }),
       });
+      storeAuthTokenFromResponse(response);
       onComplete({
         accountType: selectedAccount,
         fundingAmount: selectedFunding,
